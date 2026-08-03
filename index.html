@@ -382,18 +382,16 @@
     <input type="file" accept="image/*" capture="environment" id="artikelInput" style="display:none">
 
     <div class="material-section">
-      <label class="field label" style="display:block; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.06em; color:var(--ink-faint); margin-bottom:8px; font-family:'JetBrains Mono',monospace;">Materiaallabel (optioneel, max 3 foto's — soms staat de samenstelling verdeeld)</label>
+      <label class="field label" style="display:block; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.06em; color:var(--ink-faint); margin-bottom:8px; font-family:'JetBrains Mono',monospace;">Materiaallabel (optioneel, max 2 foto's — soms staat de samenstelling verdeeld)</label>
       <div class="material-row">
         <div class="mat-slot" id="materiaalSlot0" data-idx="0"><div class="cam-icon">🧵</div></div>
         <div class="mat-slot" id="materiaalSlot1" data-idx="1"><div class="cam-icon">🧵</div></div>
-        <div class="mat-slot" id="materiaalSlot2" data-idx="2"><div class="cam-icon">🧵</div></div>
       </div>
       <textarea id="materiaalText" rows="3" placeholder="Typ hier de samenstelling (optioneel)&#10;bv.&#10;Cotton 95&#10;Elastane 5"></textarea>
       <button type="button" class="copy-btn" id="copyMateriaalBtn">📋 Kopieer</button>
     </div>
     <input type="file" accept="image/*" capture="environment" id="materiaalInput0" style="display:none">
     <input type="file" accept="image/*" capture="environment" id="materiaalInput1" style="display:none">
-    <input type="file" accept="image/*" capture="environment" id="materiaalInput2" style="display:none">
 
     <div class="field">
       <label>Referentie</label>
@@ -455,7 +453,7 @@ const TABLE = "packshot_items";
 
 let currentSession = localStorage.getItem('packshot_session') || defaultSessionName();
 let items = [];
-let labelPhoto = null, artikelPhoto = null, materiaalPhotos = [null, null, null];
+let labelPhoto = null, artikelPhoto = null, materiaalPhotos = [null, null];
 let pendingDeleteId = null;
 let processingPhotoCount = 0;
 let isSaving = false;
@@ -546,12 +544,12 @@ function compressImage(file, maxDim=1100, quality=0.72){
 
 /* ---------- materiaal-label OCR ---------- */
 function parseMaterialPhotos(raw){
-  const out = [null, null, null];
+  const out = [null, null];
   if(!raw) return out;
   try{
     const arr = JSON.parse(raw);
     if(Array.isArray(arr)){
-      arr.slice(0,3).forEach((v,i) => out[i] = v);
+      arr.slice(0,2).forEach((v,i) => out[i] = v);
       return out;
     }
   }catch(e){ /* niet-JSON: oud formaat met één losse foto */ }
@@ -814,8 +812,8 @@ function openItemSheet(item){
     artikelSlot.classList.remove('filled');
   }
 
-  materiaalPhotos = item ? parseMaterialPhotos(item.foto_materiaal) : [null, null, null];
-  [0,1,2].forEach(idx => {
+  materiaalPhotos = item ? parseMaterialPhotos(item.foto_materiaal) : [null, null];
+  [0,1].forEach(idx => {
     const slot = document.getElementById(`materiaalSlot${idx}`);
     if(materiaalPhotos[idx]){
       slot.innerHTML = `<img src="${materiaalPhotos[idx]}"><div class="retake">opnieuw</div>`;
@@ -922,7 +920,7 @@ function wireMaterialSlot(idx){
     }
   });
 }
-[0,1,2].forEach(wireMaterialSlot);
+[0,1].forEach(wireMaterialSlot);
 
 document.getElementById('copyMateriaalBtn').addEventListener('click', async ()=>{
   const val = document.getElementById('materiaalText').value.trim();
@@ -993,12 +991,12 @@ document.getElementById('saveBtn').addEventListener('click', async ()=>{
   toast(`Artikel ${String(payload.volgnummer).padStart(3,'0')} opgeslagen`);
 
   // reset for next capture, keep sheet open for fast successive shooting
-  labelPhoto = null; artikelPhoto = null; materiaalPhotos = [null, null, null];
+  labelPhoto = null; artikelPhoto = null; materiaalPhotos = [null, null];
   document.getElementById('labelSlot').innerHTML = `<div class="cam-icon">🏷️</div><div class="cam-label">Label</div>`;
   document.getElementById('labelSlot').classList.remove('filled');
   document.getElementById('artikelSlot').innerHTML = `<div class="cam-icon">👕</div><div class="cam-label">Artikel</div>`;
   document.getElementById('artikelSlot').classList.remove('filled');
-  [0,1,2].forEach(idx=>{
+  [0,1].forEach(idx=>{
     const slot = document.getElementById(`materiaalSlot${idx}`);
     slot.innerHTML = `<div class="cam-icon">🧵</div>`;
     slot.classList.remove('filled');
@@ -1022,20 +1020,14 @@ async function exportToPDF(){
   const usableW = pageW - margin*2;
   let y = margin;
 
-  // Title
+  // Title: enkel sessie + datum
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(16);
-  doc.text(currentSession, margin, y);
-  y += 6;
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(9);
-  doc.setTextColor(120);
-  doc.text(`Packshot log — geëxporteerd ${new Date().toLocaleDateString('nl-BE')} — ${items.length} artikelen`, margin, y);
-  doc.setTextColor(20);
-  y += 8;
+  doc.setFontSize(15);
+  doc.text(`${displaySessionName(currentSession)} — ${new Date().toLocaleDateString('nl-BE')}`, margin, y);
+  y += 9;
 
-  const imgSize = 32;
-  const rowH = imgSize + 12;
+  const photoSize = 55;
+  const photoGap = 6;
 
   function ensureSpace(needed){
     if(y + needed > pageH - margin){
@@ -1057,84 +1049,91 @@ async function exportToPDF(){
     for(const it of g.items){
       const matPhotosArr = parseMaterialPhotos(it.foto_materiaal).filter(Boolean);
       const matLine = it.materiaal_tekst ? it.materiaal_tekst.trim() : '';
-      const matThumb = 28;
-      const matBlockH = matPhotosArr.length ? (matThumb + 9) : (matLine ? 10 : 0);
+      const matThumb = 22;
+      const matBlockH = (matPhotosArr.length || matLine) ? (matPhotosArr.length ? matThumb + 10 : 11) : 0;
 
-      ensureSpace(rowH + matBlockH + 4);
-      const rowTop = y;
+      const omschrPreview = doc.splitTextToSize(it.omschrijving || '', usableW);
+      const textBlockH = 6 + (omschrPreview.length * 4.2) + (it.merk ? 5 : 0) + 3;
+      const badgeH = 6;
+      const photosBlockH = photoSize + 5; // foto's + bijschrift
 
-      // volgnummer badge
-      doc.setFillColor(26,25,24);
-      doc.rect(margin, rowTop, 12, imgSize, 'F');
+      ensureSpace(badgeH + photosBlockH + textBlockH + matBlockH + 6);
+      const itemTop = y;
+
+      // klein, subtiel volgnummer-label
+      doc.setFillColor(60,58,55);
+      doc.roundedRect(margin, itemTop, 15, badgeH, 1.2, 1.2, 'F');
       doc.setTextColor(255);
       doc.setFont('helvetica','bold');
-      doc.setFontSize(11);
-      doc.text(String(it.volgnummer).padStart(3,'0'), margin+6, rowTop + imgSize/2, {align:'center', angle:90});
+      doc.setFontSize(7.5);
+      doc.text(`NR. ${String(it.volgnummer).padStart(3,'0')}`, margin + 7.5, itemTop + 4.1, {align:'center'});
       doc.setTextColor(20);
 
-      let x = margin + 16;
+      const photosTop = itemTop + badgeH + 3;
+
       try{
         if(it.foto_label){
-          doc.addImage(it.foto_label, 'JPEG', x, rowTop, imgSize, imgSize);
+          doc.addImage(it.foto_label, 'JPEG', margin, photosTop, photoSize, photoSize);
         } else {
-          doc.setDrawColor(210); doc.rect(x, rowTop, imgSize, imgSize);
+          doc.setDrawColor(210); doc.rect(margin, photosTop, photoSize, photoSize);
         }
-      }catch(e){ doc.setDrawColor(210); doc.rect(x, rowTop, imgSize, imgSize); }
-      doc.setFontSize(6.5); doc.setTextColor(140);
-      doc.text('LABEL', x + imgSize/2, rowTop + imgSize + 3.5, {align:'center'});
-      doc.setTextColor(20);
-      x += imgSize + 4;
+      }catch(e){ doc.setDrawColor(210); doc.rect(margin, photosTop, photoSize, photoSize); }
 
+      const artikelX = margin + photoSize + photoGap;
       try{
         if(it.foto_artikel){
-          doc.addImage(it.foto_artikel, 'JPEG', x, rowTop, imgSize, imgSize);
+          doc.addImage(it.foto_artikel, 'JPEG', artikelX, photosTop, photoSize, photoSize);
         } else {
-          doc.setDrawColor(210); doc.rect(x, rowTop, imgSize, imgSize);
+          doc.setDrawColor(210); doc.rect(artikelX, photosTop, photoSize, photoSize);
         }
-      }catch(e){ doc.setDrawColor(210); doc.rect(x, rowTop, imgSize, imgSize); }
-      doc.setFontSize(6.5); doc.setTextColor(140);
-      doc.text('ARTIKEL', x + imgSize/2, rowTop + imgSize + 3.5, {align:'center'});
-      doc.setTextColor(20);
-      x += imgSize + 8;
+      }catch(e){ doc.setDrawColor(210); doc.rect(artikelX, photosTop, photoSize, photoSize); }
 
-      const textW = pageW - margin - x;
+      doc.setFont('helvetica','normal'); doc.setFontSize(6.5); doc.setTextColor(140);
+      doc.text('LABEL', margin + photoSize/2, photosTop + photoSize + 3.5, {align:'center'});
+      doc.text('ARTIKEL', artikelX + photoSize/2, photosTop + photoSize + 3.5, {align:'center'});
+      doc.setTextColor(20);
+
+      let ty = photosTop + photoSize + 9;
       doc.setFont('helvetica','bold'); doc.setFontSize(11);
-      doc.text(it.referentie || '—', x, rowTop + 6);
-      doc.setFont('helvetica','normal'); doc.setFontSize(9.5);
-      const omschrLines = doc.splitTextToSize(it.omschrijving || '', textW);
-      doc.text(omschrLines, x, rowTop + 13);
+      doc.text(it.referentie || '—', margin, ty);
+      ty += 6;
+      if(omschrPreview.length){
+        doc.setFont('helvetica','normal'); doc.setFontSize(9.5);
+        doc.text(omschrPreview, margin, ty);
+        ty += omschrPreview.length * 4.2;
+      }
       if(it.merk){
         doc.setFont('helvetica','bold'); doc.setFontSize(8);
         doc.setTextColor(138,131,104);
-        doc.text(it.merk.toUpperCase(), x, rowTop + 13 + (omschrLines.length*4.2) + 4);
+        doc.text(it.merk.toUpperCase(), margin, ty);
         doc.setTextColor(20);
+        ty += 5;
       }
 
-      let bottomY = rowTop + rowH;
+      let bottomY = ty + 2;
 
       if(matPhotosArr.length || matLine){
-        const matTop = bottomY - 4;
         doc.setFont('helvetica','bold'); doc.setFontSize(6.5);
         doc.setTextColor(140);
-        doc.text('MATERIAAL', margin + 16, matTop);
+        doc.text('MATERIAAL', margin, bottomY);
         doc.setTextColor(20);
 
-        let mx = margin + 16;
-        let photosBottom = matTop;
+        let mx = margin;
+        let photosBottom = bottomY;
         if(matPhotosArr.length){
           matPhotosArr.forEach(photo => {
             try{
-              doc.addImage(photo, 'JPEG', mx, matTop + 2, matThumb, matThumb);
+              doc.addImage(photo, 'JPEG', mx, bottomY + 2, matThumb, matThumb);
             }catch(e){
-              doc.setDrawColor(210); doc.rect(mx, matTop + 2, matThumb, matThumb);
+              doc.setDrawColor(210); doc.rect(mx, bottomY + 2, matThumb, matThumb);
             }
             mx += matThumb + 3;
           });
-          photosBottom = matTop + 2 + matThumb;
+          photosBottom = bottomY + 2 + matThumb;
         }
 
         if(matLine){
-          const matTextX = matPhotosArr.length ? mx + 3 : margin + 16;
+          const matTextX = matPhotosArr.length ? mx + 3 : margin;
           const matTextW = pageW - margin - matTextX;
           doc.setFont('helvetica','normal'); doc.setFontSize(7);
           doc.setTextColor(90);
@@ -1144,15 +1143,15 @@ async function exportToPDF(){
             matTextLines = matTextLines.slice(0, maxLines);
             matTextLines[maxLines - 1] += ' …';
           }
-          doc.text(matTextLines, matTextX, matTop + 5);
+          doc.text(matTextLines, matTextX, bottomY + 5);
           doc.setTextColor(20);
-          photosBottom = Math.max(photosBottom, matTop + 5 + matTextLines.length * 3.2);
+          photosBottom = Math.max(photosBottom, bottomY + 5 + matTextLines.length * 3.2);
         }
 
-        bottomY = Math.max(bottomY, photosBottom + 4);
+        bottomY = photosBottom + 3;
       }
 
-      y = bottomY;
+      y = bottomY + 3;
       doc.setDrawColor(230);
       doc.line(margin, y-2, pageW-margin, y-2);
     }
