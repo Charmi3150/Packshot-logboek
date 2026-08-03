@@ -1020,14 +1020,14 @@ async function exportToPDF(){
   const usableW = pageW - margin*2;
   let y = margin;
 
-  // Titel: enkel sessie + datum van de sessie (niet de exportdatum)
+  // Titel: "Sessie — datum" (geen dubbele datum meer)
   const sessionDates = items.map(i => new Date(i.created_at)).filter(d => !isNaN(d));
   const sessionDate = sessionDates.length
     ? new Date(Math.min(...sessionDates)).toLocaleDateString('nl-BE')
     : new Date().toLocaleDateString('nl-BE');
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(16);
-  doc.text(`${displaySessionName(currentSession)} — ${sessionDate}`, margin, y);
+  doc.text(`Sessie — ${sessionDate}`, margin, y);
   y += 6;
   doc.setDrawColor(200);
   doc.line(margin, y, pageW - margin, y);
@@ -1048,36 +1048,47 @@ async function exportToPDF(){
 
     // alle foto's (label, artikel, materiaal x2) samen op 1 rij
     const photoSlots = [
-      { src: it.foto_label, label: 'LABEL' },
+      { src: it.foto_label, label: it.referentie || '—' },
       { src: it.foto_artikel, label: 'ARTIKEL' }
     ];
     matPhotosArr.forEach((p, i) => photoSlots.push({ src: p, label: matPhotosArr.length > 1 ? `MATERIAAL ${i+1}` : 'MATERIAAL' }));
 
     const gap = 4;
     let photoSize = Math.min(55, (usableW - (photoSlots.length - 1) * gap) / photoSlots.length);
-    const rowWidth = photoSlots.length * photoSize + (photoSlots.length - 1) * gap;
     const rowStartX = margin; // links uitgelijnd
 
     const matTextLines = matLine ? doc.splitTextToSize(matLine, usableW).slice(0, 6) : [];
-    const omschrPreview = doc.splitTextToSize(it.omschrijving || '', usableW);
-    const badgeH = 6;
+
+    // omschrijving + merk komen op dezelfde regel als het volgnummer
+    const badgeW = 15, badgeH = 6, badgeGap = 3;
+    const topTextX = margin + badgeW + badgeGap;
+    const topTextW = usableW - badgeW - badgeGap;
+    let topLabel = it.omschrijving || '';
+    if(it.merk) topLabel = topLabel ? `${topLabel} — ${it.merk.toUpperCase()}` : it.merk.toUpperCase();
+    const topLines = topLabel ? doc.splitTextToSize(topLabel, topTextW).slice(0, 2) : [];
+    const topBlockH = Math.max(badgeH, topLines.length * 4.2);
+
     const photosBlockH = photoSize + 5;
-    const textBlockH = 6 + (omschrPreview.length * 4.2) + (it.merk ? 5 : 0) + 3;
     const matTextBlockH = matTextLines.length ? (matTextLines.length * 3.4 + 5) : 0;
 
-    ensureSpace(badgeH + photosBlockH + textBlockH + matTextBlockH + 6);
+    ensureSpace(topBlockH + 3 + photosBlockH + matTextBlockH + 6);
     const itemTop = y;
 
     // klein, subtiel volgnummer-label
     doc.setFillColor(60,58,55);
-    doc.roundedRect(margin, itemTop, 15, badgeH, 1.2, 1.2, 'F');
+    doc.roundedRect(margin, itemTop, badgeW, badgeH, 1.2, 1.2, 'F');
     doc.setTextColor(255);
     doc.setFont('helvetica','bold');
     doc.setFontSize(7.5);
-    doc.text(`NR. ${String(it.volgnummer).padStart(3,'0')}`, margin + 7.5, itemTop + 4.1, {align:'center'});
+    doc.text(`NR. ${String(it.volgnummer).padStart(3,'0')}`, margin + badgeW/2, itemTop + 4.1, {align:'center'});
     doc.setTextColor(20);
 
-    const photosTop = itemTop + badgeH + 3;
+    if(topLines.length){
+      doc.setFont('helvetica','normal'); doc.setFontSize(9);
+      doc.text(topLines, topTextX, itemTop + 4.1);
+    }
+
+    const photosTop = itemTop + topBlockH + 3;
     let px = rowStartX;
     photoSlots.forEach(slot => {
       try{
@@ -1093,29 +1104,14 @@ async function exportToPDF(){
       px += photoSize + gap;
     });
 
-    let ty = photosTop + photoSize + 9;
-    doc.setFont('helvetica','bold'); doc.setFontSize(11);
-    doc.text(it.referentie || '—', margin, ty);
-    ty += 6;
-    if(omschrPreview.length){
-      doc.setFont('helvetica','normal'); doc.setFontSize(9.5);
-      doc.text(omschrPreview, margin, ty);
-      ty += omschrPreview.length * 4.2;
-    }
-    if(it.merk){
-      doc.setFont('helvetica','bold'); doc.setFontSize(8);
-      doc.setTextColor(138,131,104);
-      doc.text(it.merk.toUpperCase(), margin, ty);
-      doc.setTextColor(20);
-      ty += 5;
-    }
+    let ty = photosTop + photoSize + 8;
 
     if(matTextLines.length){
       doc.setFont('helvetica','normal'); doc.setFontSize(7);
       doc.setTextColor(90);
-      doc.text(matTextLines, margin, ty + 2);
+      doc.text(matTextLines, margin, ty);
       doc.setTextColor(20);
-      ty += 2 + matTextLines.length * 3.4;
+      ty += matTextLines.length * 3.4;
     }
 
     y = ty + 4;
