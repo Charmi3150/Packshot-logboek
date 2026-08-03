@@ -261,8 +261,13 @@
   .session-item{
     display:flex; justify-content:space-between; align-items:center;
     padding:12px 4px; border-bottom:1px solid var(--line); font-family:'JetBrains Mono',monospace; font-size:14px;
+    gap:10px;
   }
+  .session-item .info{flex:1; display:flex; justify-content:space-between; align-items:center; gap:10px; cursor:pointer;}
   .session-item span.n{color:var(--ink-faint); font-size:12px;}
+  .session-del-btn{
+    background:none; border:none; color:var(--ink-faint); font-size:15px; padding:6px; cursor:pointer; flex-shrink:0;
+  }
 
   /* Toast */
   #toast{
@@ -522,14 +527,42 @@ async function loadSessionList(){
   const box = document.getElementById('sessionList');
   if(meta.length === 0){ box.innerHTML = '<div class="sub">Nog geen eerdere sessies</div>'; return; }
   box.innerHTML = meta.map(m => `
-    <div class="session-item" data-session="${escapeAttr(m.session_id)}">
-      <span>${escapeHtml(displaySessionName(m.session_id))}</span>
-      <span class="n">${m.count} art. ›</span>
+    <div class="session-item">
+      <div class="info" data-session="${escapeAttr(m.session_id)}">
+        <span>${escapeHtml(displaySessionName(m.session_id))}</span>
+        <span class="n">${m.count} art. ›</span>
+      </div>
+      <button class="session-del-btn" data-session-del="${escapeAttr(m.session_id)}" data-count="${m.count}">🗑️</button>
     </div>`).join('');
-  box.querySelectorAll('.session-item').forEach(el=>{
+
+  box.querySelectorAll('.info').forEach(el=>{
     el.addEventListener('click', ()=>{
       setSession(el.dataset.session);
       document.getElementById('sessionSheetBackdrop').classList.remove('open');
+    });
+  });
+
+  box.querySelectorAll('[data-session-del]').forEach(btn=>{
+    btn.addEventListener('click', async (e)=>{
+      e.stopPropagation();
+      const name = btn.dataset.sessionDel;
+      const count = btn.dataset.count;
+      const ok = await customConfirm(`Sessie "${displaySessionName(name)}" met ${count} artikel${count==1?'':'en'} volledig wissen? Dit kan niet ongedaan gemaakt worden.`);
+      if(!ok) return;
+
+      const { error } = await sb.from(TABLE).delete().eq('session_id', name);
+      if(error){ toast('Wissen mislukt: ' + (error.message || JSON.stringify(error))); return; }
+
+      toast('Sessie gewist');
+
+      if(name === currentSession){
+        currentSession = defaultSessionName();
+        localStorage.setItem('packshot_session', currentSession);
+        items = [];
+        render();
+      }
+      loadSessionList();
+      renderSessionTabs();
     });
   });
 }
