@@ -274,9 +274,15 @@
   }
 
   .material-chip{
-    display:flex; align-items:flex-start; gap:6px; margin-top:8px; padding:7px 9px;
+    display:flex; flex-direction:column; gap:6px; margin-top:8px; padding:7px 9px;
     background:var(--tag-soft); border-radius:8px;
   }
+  .mat-thumbs{display:flex; gap:5px;}
+  .mat-thumb{
+    width:34px; height:34px; border-radius:6px; object-fit:cover; cursor:pointer;
+    border:1px solid var(--line); flex-shrink:0;
+  }
+  .mat-text-row{display:flex; align-items:flex-start; gap:6px;}
   .material-chip .mat-text{
     flex:1; font-family:'JetBrains Mono',monospace; font-size:11px; color:var(--ink-soft);
     white-space:pre-line; line-height:1.4;
@@ -539,61 +545,7 @@ function compressImage(file, maxDim=1100, quality=0.72){
   });
 }
 
-/* ---------- materiaal-label OCR: herkennen + parsen ---------- */
-function parseComposition(rawText){
-  // Enkel één woord na het percentage: voorkomt dat er losse letters/woorden
-  // van de volgende regel worden meegegrist (bv. "Cotton i" i.p.v. "Cotton").
-  const matchRe = /(\d{1,3}(?:[.,]\d+)?)\s*%\s*([A-Za-z][A-Za-z\-]{1,18})/g;
-
-  const raw = [];
-  const lines = rawText.split(/\n+/).map(l => l.trim()).filter(Boolean);
-  for(const line of lines){
-    matchRe.lastIndex = 0;
-    let m;
-    while((m = matchRe.exec(line)) !== null){
-      raw.push({ material: m[2].trim(), pct: m[1].replace(',', '.') });
-    }
-  }
-  if(raw.length === 0){
-    matchRe.lastIndex = 0;
-    let m;
-    while((m = matchRe.exec(rawText)) !== null){
-      raw.push({ material: m[2].trim(), pct: m[1].replace(',', '.') });
-    }
-  }
-
-  // Veel labels herhalen de samenstelling (andere taal, voering, ...).
-  // Eén samenstellingsgroep telt normaal op tot ~100% — stop zodra dat bereikt is,
-  // zo pakken we enkel de eerste (hoofd)samenstelling en niet de herhalingen erna.
-  const results = [];
-  let sum = 0;
-  for(const r of raw){
-    results.push(r);
-    sum += parseFloat(r.pct) || 0;
-    if(sum >= 98) break;
-  }
-  return results;
-}
-
-function formatComposition(results){
-  return results.map(r => `${r.material} ${r.pct}`).join('\n');
-}
-
-function appendCompositionResults(parsed){
-  const ta = document.getElementById('materiaalText');
-  const existingLines = ta.value.split(/\n+/).map(l => l.trim()).filter(Boolean);
-  const existingKeys = new Set(existingLines.map(l => l.replace(/\s*[\d.,]+\s*$/, '').trim().toLowerCase()));
-  const newLines = [];
-  parsed.forEach(r => {
-    const key = r.material.toLowerCase();
-    if(!existingKeys.has(key)){
-      newLines.push(`${r.material} ${r.pct}`);
-      existingKeys.add(key);
-    }
-  });
-  ta.value = [...existingLines, ...newLines].join('\n');
-}
-
+/* ---------- materiaal-label OCR ---------- */
 function parseMaterialPhotos(raw){
   const out = [null, null, null];
   if(!raw) return out;
@@ -768,10 +720,17 @@ function render(){
             <span class="ref">${escapeHtml(it.referentie || '—')}</span>
             <div class="omschr">${escapeHtml(it.omschrijving || '')}</div>
             ${it.merk ? `<div class="merk">${escapeHtml(it.merk)}</div>` : ''}
-            ${it.materiaal_tekst ? `
+            ${(it.foto_materiaal || it.materiaal_tekst) ? `
             <div class="material-chip">
-              <span class="mat-text">${escapeHtml(it.materiaal_tekst)}</span>
-              <button class="mat-copy" data-copy="${it.id}" title="Kopieer samenstelling">📋</button>
+              ${parseMaterialPhotos(it.foto_materiaal).filter(Boolean).length ? `
+              <div class="mat-thumbs">
+                ${parseMaterialPhotos(it.foto_materiaal).filter(Boolean).map(p => `<img class="mat-thumb" src="${p}">`).join('')}
+              </div>` : ''}
+              ${it.materiaal_tekst ? `
+              <div class="mat-text-row">
+                <span class="mat-text">${escapeHtml(it.materiaal_tekst)}</span>
+                <button class="mat-copy" data-copy="${it.id}" title="Kopieer samenstelling">📋</button>
+              </div>` : ''}
             </div>` : ''}
           </div>
         </div>
@@ -785,6 +744,10 @@ function render(){
       const it = items.find(i => i.id === img.dataset.item);
       if(it) openLightbox(it[img.dataset.field]);
     });
+  });
+
+  list.querySelectorAll('.mat-thumb').forEach(img=>{
+    img.addEventListener('click', ()=> openLightbox(img.src));
   });
 
   list.querySelectorAll('[data-edit]').forEach(btn=>{
@@ -925,7 +888,19 @@ document.getElementById('artikelInput').addEventListener('change', async (e)=>{
 function wireMaterialSlot(idx){
   const slot = document.getElementById(`materiaalSlot${idx}`);
   const input = document.getElementById(`materiaalInput${idx}`);
-  slot.addEventListener('click', ()=> input.click());
+
+  slot.addEventListener('click', (e)=>{
+    if(slot.classList.contains('filled')){
+      if(e.target.closest('.retake')){
+        input.click();
+      } else {
+        openLightbox(materiaalPhotos[idx]);
+      }
+    } else {
+      input.click();
+    }
+  });
+
   input.addEventListener('change', async (e)=>{
     const file = e.target.files[0];
     if(!file) return;
@@ -938,13 +913,15 @@ function wireMaterialSlot(idx){
       slot.innerHTML = `<img src="${materiaalPhotos[idx]}"><div class="retake">opnieuw</div>`;
       slot.classList.add('filled');
 
+      // ruwe herkende tekst overnemen zoals ze op het label staat, geen filtering
       const { data: { text } } = await Tesseract.recognize(file, 'eng');
-      const parsed = parseComposition(text);
-      if(parsed.length){
-        appendCompositionResults(parsed);
-        toast('Samenstelling herkend');
+      const cleaned = text.trim();
+      if(cleaned){
+        const ta = document.getElementById('materiaalText');
+        ta.value = ta.value.trim() ? (ta.value.trim() + '\n\n' + cleaned) : cleaned;
+        toast('Tekst herkend');
       } else {
-        toast('Geen samenstelling herkend in deze foto');
+        toast('Geen tekst herkend in deze foto');
       }
     } catch(err){
       console.error(err);
@@ -1089,9 +1066,12 @@ async function exportToPDF(){
     y += 9;
 
     for(const it of g.items){
-      const matLine = it.materiaal_tekst ? it.materiaal_tekst.split(/\n+/).filter(Boolean).join(' · ') : '';
-      const itemExtra = matLine ? 6 : 0;
-      ensureSpace(rowH + itemExtra + 4);
+      const matPhotosArr = parseMaterialPhotos(it.foto_materiaal).filter(Boolean);
+      const matLine = it.materiaal_tekst ? it.materiaal_tekst.trim() : '';
+      const matThumb = 28;
+      const matBlockH = matPhotosArr.length ? (matThumb + 9) : (matLine ? 10 : 0);
+
+      ensureSpace(rowH + matBlockH + 4);
       const rowTop = y;
 
       // volgnummer badge
@@ -1140,15 +1120,50 @@ async function exportToPDF(){
         doc.text(it.merk.toUpperCase(), x, rowTop + 13 + (omschrLines.length*4.2) + 4);
         doc.setTextColor(20);
       }
-      if(matLine){
-        doc.setFont('helvetica','normal'); doc.setFontSize(7.5);
-        doc.setTextColor(110);
-        const matLines = doc.splitTextToSize(matLine, textW);
-        doc.text(matLines, x, rowTop + 13 + (omschrLines.length*4.2) + (it.merk ? 9 : 4));
+
+      let bottomY = rowTop + rowH;
+
+      if(matPhotosArr.length || matLine){
+        const matTop = bottomY - 4;
+        doc.setFont('helvetica','bold'); doc.setFontSize(6.5);
+        doc.setTextColor(140);
+        doc.text('MATERIAAL', margin + 16, matTop);
         doc.setTextColor(20);
+
+        let mx = margin + 16;
+        let photosBottom = matTop;
+        if(matPhotosArr.length){
+          matPhotosArr.forEach(photo => {
+            try{
+              doc.addImage(photo, 'JPEG', mx, matTop + 2, matThumb, matThumb);
+            }catch(e){
+              doc.setDrawColor(210); doc.rect(mx, matTop + 2, matThumb, matThumb);
+            }
+            mx += matThumb + 3;
+          });
+          photosBottom = matTop + 2 + matThumb;
+        }
+
+        if(matLine){
+          const matTextX = matPhotosArr.length ? mx + 3 : margin + 16;
+          const matTextW = pageW - margin - matTextX;
+          doc.setFont('helvetica','normal'); doc.setFontSize(7);
+          doc.setTextColor(90);
+          let matTextLines = doc.splitTextToSize(matLine, matTextW);
+          const maxLines = 8;
+          if(matTextLines.length > maxLines){
+            matTextLines = matTextLines.slice(0, maxLines);
+            matTextLines[maxLines - 1] += ' …';
+          }
+          doc.text(matTextLines, matTextX, matTop + 5);
+          doc.setTextColor(20);
+          photosBottom = Math.max(photosBottom, matTop + 5 + matTextLines.length * 3.2);
+        }
+
+        bottomY = Math.max(bottomY, photosBottom + 4);
       }
 
-      y = rowTop + rowH + itemExtra;
+      y = bottomY;
       doc.setDrawColor(230);
       doc.line(margin, y-2, pageW-margin, y-2);
     }
