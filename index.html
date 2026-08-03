@@ -249,8 +249,9 @@
   /* Toast */
   #toast{
     position:fixed; left:50%; bottom:calc(96px + var(--safe-bottom)); transform:translateX(-50%) translateY(20px);
-    background:var(--ink); color:var(--paper); padding:11px 18px; border-radius:24px;
+    background:var(--ink); color:var(--paper); padding:11px 18px; border-radius:16px;
     font-size:13px; font-weight:600; z-index:80; opacity:0; transition:all .25s ease; pointer-events:none;
+    max-width:calc(100vw - 40px); width:max-content; text-align:center; line-height:1.4;
   }
   #toast.show{opacity:1; transform:translateX(-50%) translateY(0);}
 
@@ -388,7 +389,8 @@ function toast(msg){
   t.textContent = msg;
   t.classList.add('show');
   clearTimeout(toast._t);
-  toast._t = setTimeout(()=>t.classList.remove('show'), 2000);
+  const duration = msg.length > 40 ? 6000 : 2000;
+  toast._t = setTimeout(()=>t.classList.remove('show'), duration);
 }
 
 function customConfirm(text){
@@ -452,7 +454,7 @@ async function loadItems(){
     .select('*')
     .eq('session_id', currentSession)
     .order('volgnummer', { ascending: true });
-  if(error){ console.error(error); toast('Kon niet laden'); document.getElementById('syncState').textContent=''; return; }
+  if(error){ console.error(error); toast('Laden mislukt: ' + (error.message || error.hint || JSON.stringify(error))); document.getElementById('syncState').textContent=''; return; }
   items = data || [];
   document.getElementById('syncState').textContent = '';
   render();
@@ -577,7 +579,7 @@ function render(){
       if(!ok) return;
       const id = btn.dataset.del;
       const { error } = await sb.from(TABLE).delete().eq('id', id);
-      if(error){ toast('Verwijderen mislukt'); return; }
+      if(error){ toast('Verwijderen mislukt: ' + (error.message || JSON.stringify(error))); return; }
       items = items.filter(i => i.id !== id);
       render();
       toast('Verwijderd');
@@ -677,7 +679,7 @@ document.getElementById('saveBtn').addEventListener('click', async ()=>{
     const { data, error } = await sb.from(TABLE).update(updatePayload).eq('id', editingItem.id).select();
     btn.disabled = false; btn.textContent = 'Wijzigingen opslaan';
 
-    if(error){ console.error(error); toast('Opslaan mislukt — check verbinding'); return; }
+    if(error){ console.error(error); toast('Opslaan mislukt: ' + (error.message || error.hint || JSON.stringify(error))); return; }
 
     items = items.map(i => i.id === editingItem.id ? data[0] : i);
     editingItem = null;
@@ -698,7 +700,7 @@ document.getElementById('saveBtn').addEventListener('click', async ()=>{
   const { data, error } = await sb.from(TABLE).insert(payload).select();
   btn.disabled = false; btn.textContent = 'Opslaan & volgende';
 
-  if(error){ console.error(error); toast('Opslaan mislukt — check verbinding'); return; }
+  if(error){ console.error(error); toast('Opslaan mislukt: ' + (error.message || error.hint || JSON.stringify(error))); return; }
 
   items.push(data[0]);
   render();
