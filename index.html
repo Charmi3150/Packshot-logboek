@@ -363,13 +363,9 @@
   <div class="sheet">
     <div class="sheet-handle"></div>
     <h2>Sessie</h2>
-    <div class="sub">Kies een bestaande sessie of start een nieuwe</div>
+    <div class="sub">Kies een bestaande sessie, of start een nieuwe voor vandaag</div>
 
-    <div class="field">
-      <label>Nieuwe sessienaam</label>
-      <input type="text" id="newSessionInput" placeholder="bv. Shoot 03-08 najaarscollectie">
-    </div>
-    <button class="save-btn" id="startSessionBtn">Nieuwe sessie starten</button>
+    <button class="save-btn" id="startSessionBtn">+ Nieuwe sessie starten (vandaag)</button>
 
     <div class="session-list" id="sessionList"></div>
     <button class="cancel-btn" id="closeSessionBtn">Sluiten</button>
@@ -915,7 +911,6 @@ document.getElementById('exportPdfBtn').addEventListener('click', exportToPDF);
 
 /* ---------- session sheet ---------- */
 document.getElementById('switchSessionBtn').addEventListener('click', ()=>{
-  document.getElementById('newSessionInput').value = '';
   loadSessionList();
   document.getElementById('sessionSheetBackdrop').classList.add('open');
 });
@@ -923,8 +918,7 @@ document.getElementById('closeSessionBtn').addEventListener('click', ()=>{
   document.getElementById('sessionSheetBackdrop').classList.remove('open');
 });
 document.getElementById('startSessionBtn').addEventListener('click', ()=>{
-  const name = document.getElementById('newSessionInput').value.trim();
-  setSession(name || defaultSessionName());
+  setSession(defaultSessionName());
   document.getElementById('sessionSheetBackdrop').classList.remove('open');
 });
 
