@@ -557,14 +557,24 @@ function parseMaterialPhotos(raw){
   return out;
 }
 
+async function ensureSessionRecord(name){
+  try{
+    await sb.from('packshot_sessions').upsert({ session_id: name }, { onConflict: 'session_id', ignoreDuplicates: true });
+  }catch(e){ console.error(e); }
+}
+
 async function fetchSessionMeta(){
-  const { data, error } = await sb.from(TABLE).select('session_id, created_at');
-  if(error){ console.error(error); return []; }
+  const [sessionsRes, itemsRes] = await Promise.all([
+    sb.from('packshot_sessions').select('session_id, created_at'),
+    sb.from(TABLE).select('session_id, created_at')
+  ]);
   const map = {};
-  (data||[]).forEach(r=>{
-    if(!map[r.session_id]) map[r.session_id] = { session_id: r.session_id, count:0, earliest:r.created_at };
+  (sessionsRes.data || []).forEach(r => {
+    map[r.session_id] = { session_id: r.session_id, count: 0, earliest: r.created_at };
+  });
+  (itemsRes.data || []).forEach(r => {
+    if(!map[r.session_id]) map[r.session_id] = { session_id: r.session_id, count: 0, earliest: r.created_at };
     map[r.session_id].count++;
-    if(r.created_at < map[r.session_id].earliest) map[r.session_id].earliest = r.created_at;
   });
   return Object.values(map);
 }
@@ -641,6 +651,7 @@ async function loadSessionList(){
 
       const { error } = await sb.from(TABLE).delete().eq('session_id', name);
       if(error){ toast('Wissen mislukt: ' + (error.message || JSON.stringify(error))); return; }
+      await sb.from('packshot_sessions').delete().eq('session_id', name);
 
       toast('Sessie gewist');
 
@@ -972,15 +983,25 @@ document.getElementById('saveBtn').addEventListener('click', async ()=>{
     return;
   }
 
+  // vangnet: waarschuw als deze referentie al bij het vorige artikel hoort
+  // (bv. door een dubbele tik of per ongeluk twee keer opslaan)
+  if(!editingItem && referentie && items.length){
+    const lastItem = items.reduce((a,b) => (b.volgnummer > a.volgnummer ? b : a), items[0]);
+    if(lastItem.referentie && lastItem.referentie === referentie){
+      const proceed = await customConfirm(`Referentie "${referentie}" staat al bij artikel ${String(lastItem.volgnummer).padStart(3,'0')}. Toch als nieuw artikel opslaan?`);
+      if(!proceed) return;
+    }
+  }
+
   isSaving = true;
   const btn = document.getElementById('saveBtn');
-  btn.disabled = true; btn.textContent = 'Opslaan…';
+  btn.disabled = true; btn.style.pointerEvents = 'none'; btn.textContent = 'Opslaan…';
 
   if(editingItem){
     const updatePayload = { referentie, omschrijving, merk, foto_label: labelPhoto, foto_artikel: artikelPhoto, foto_materiaal: JSON.stringify(materiaalPhotos.filter(Boolean)), materiaal_tekst: materiaalTekst };
     const { data, error } = await sb.from(TABLE).update(updatePayload).eq('id', editingItem.id).select();
     isSaving = false;
-    btn.disabled = false; btn.textContent = 'Wijzigingen opslaan';
+    btn.disabled = false; btn.style.pointerEvents = ''; btn.textContent = 'Wijzigingen opslaan';
 
     if(error){ console.error(error); toast('Opslaan mislukt: ' + (error.message || error.hint || JSON.stringify(error))); return; }
 
@@ -1004,7 +1025,7 @@ document.getElementById('saveBtn').addEventListener('click', async ()=>{
 
   const { data, error } = await sb.from(TABLE).insert(payload).select();
   isSaving = false;
-  btn.disabled = false; btn.textContent = 'Opslaan & volgende';
+  btn.disabled = false; btn.style.pointerEvents = ''; btn.textContent = 'Opslaan & volgende';
 
   if(error){ console.error(error); toast('Opslaan mislukt: ' + (error.message || error.hint || JSON.stringify(error))); return; }
 
@@ -1157,12 +1178,16 @@ document.getElementById('switchSessionBtn').addEventListener('click', ()=>{
 document.getElementById('closeSessionBtn').addEventListener('click', ()=>{
   document.getElementById('sessionSheetBackdrop').classList.remove('open');
 });
-document.getElementById('startSessionBtn').addEventListener('click', ()=>{
+document.getElementById('startSessionBtn').addEventListener('click', async ()=>{
   const name = document.getElementById('newSessionInput').value.trim();
   if(!name){
     toast('Geef eerst een titel voor de sessie');
     return;
   }
+  const btn = document.getElementById('startSessionBtn');
+  btn.disabled = true;
+  await ensureSessionRecord(name);
+  btn.disabled = false;
   setSession(name);
   document.getElementById('sessionSheetBackdrop').classList.remove('open');
 });
@@ -1182,6 +1207,7 @@ function subscribeRealtime(){
   realtimeChannel = sb
     .channel('packshot-items-sync')
     .on('postgres_changes', { event: '*', schema: 'public', table: TABLE }, handleRealtimeChange)
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'packshot_sessions' }, ()=> renderSessionTabs())
     .subscribe();
 }
 
