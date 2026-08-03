@@ -571,6 +571,9 @@ async function fetchSessionMeta(){
 
 async function renderSessionTabs(){
   const meta = await fetchSessionMeta();
+  if(currentSession && !meta.some(m => m.session_id === currentSession)){
+    meta.push({ session_id: currentSession, count: items.length, earliest: new Date().toISOString() });
+  }
   meta.sort((a,b)=> a.earliest.localeCompare(b.earliest));
   const box = document.getElementById('sessionTabs');
   if(meta.length === 0){ box.innerHTML = ''; return; }
