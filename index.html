@@ -140,6 +140,18 @@
     background:var(--paper-deep); border:1px solid var(--line);
     flex-shrink:0;
   }
+  .thumb[data-item]{cursor:pointer;}
+  .lightbox-backdrop{
+    position:fixed; inset:0; background:rgba(10,9,8,0.94); z-index:95;
+    display:none; align-items:center; justify-content:center; padding:20px;
+  }
+  .lightbox-backdrop.open{display:flex;}
+  .lightbox-backdrop img{max-width:100%; max-height:100%; border-radius:6px; box-shadow:0 10px 40px rgba(0,0,0,.5);}
+  .lightbox-close{
+    position:absolute; top:calc(16px + var(--safe-bottom)); right:16px;
+    background:rgba(255,255,255,.12); color:#fff; border:none; border-radius:50%;
+    width:36px; height:36px; font-size:18px;
+  }
   .thumb.empty-slot{
     display:flex; align-items:center; justify-content:center;
     color:var(--ink-faint); font-size:10px; font-family:'JetBrains Mono',monospace;
@@ -279,7 +291,7 @@
 <div class="sheet-backdrop" id="newSheetBackdrop">
   <div class="sheet">
     <div class="sheet-handle"></div>
-    <h2>Nieuw artikel</h2>
+    <h2 id="sheetTitle">Nieuw artikel</h2>
     <div class="sub" id="newVolgnummer">VOLGNR. —</div>
 
     <div class="capture-row">
@@ -345,6 +357,11 @@
   </div>
 </div>
 
+<div class="lightbox-backdrop" id="lightboxBackdrop">
+  <button class="lightbox-close" id="lightboxClose">✕</button>
+  <img id="lightboxImg" src="">
+</div>
+
 <div id="toast"></div>
 
 <script>
@@ -392,6 +409,19 @@ function customConfirm(text){
     no.addEventListener('click', onNo);
   });
 }
+
+function openLightbox(src){
+  if(!src) return;
+  document.getElementById('lightboxImg').src = src;
+  document.getElementById('lightboxBackdrop').classList.add('open');
+}
+function closeLightbox(){
+  document.getElementById('lightboxBackdrop').classList.remove('open');
+}
+document.getElementById('lightboxClose').addEventListener('click', closeLightbox);
+document.getElementById('lightboxBackdrop').addEventListener('click', (e)=>{
+  if(e.target.id === 'lightboxBackdrop') closeLightbox();
+});
 
 /* ---------- image compression ---------- */
 function compressImage(file, maxDim=1100, quality=0.72){
@@ -501,16 +531,17 @@ function render(){
       <div class="card-body">
         <div class="photos">
           <div class="thumb-col">
-            ${it.foto_label ? `<img class="thumb" src="${it.foto_label}">` : `<div class="thumb empty-slot">—</div>`}
+            ${it.foto_label ? `<img class="thumb" data-item="${it.id}" data-field="foto_label" src="${it.foto_label}">` : `<div class="thumb empty-slot">—</div>`}
             <div class="thumb-label">Label</div>
           </div>
           <div class="stitch"></div>
           <div class="thumb-col">
-            ${it.foto_artikel ? `<img class="thumb" src="${it.foto_artikel}">` : `<div class="thumb empty-slot">—</div>`}
+            ${it.foto_artikel ? `<img class="thumb" data-item="${it.id}" data-field="foto_artikel" src="${it.foto_artikel}">` : `<div class="thumb empty-slot">—</div>`}
             <div class="thumb-label">Artikel</div>
           </div>
           <div style="flex:1"></div>
           <div class="card-actions">
+            <button class="icon-btn" data-edit="${it.id}">✏️</button>
             <button class="icon-btn" data-del="${it.id}">🗑️</button>
           </div>
         </div>
@@ -525,6 +556,20 @@ function render(){
     </div>
   `).join('')}
   `).join('');
+
+  list.querySelectorAll('.thumb[data-item]').forEach(img=>{
+    img.addEventListener('click', ()=>{
+      const it = items.find(i => i.id === img.dataset.item);
+      if(it) openLightbox(it[img.dataset.field]);
+    });
+  });
+
+  list.querySelectorAll('[data-edit]').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      const it = items.find(i => i.id === btn.dataset.edit);
+      if(it) openItemSheet(it);
+    });
+  });
 
   list.querySelectorAll('[data-del]').forEach(btn=>{
     btn.addEventListener('click', async ()=>{
@@ -545,22 +590,46 @@ function escapeHtml(s){
 }
 function escapeAttr(s){ return escapeHtml(s); }
 
-/* ---------- new item sheet ---------- */
-function openNewSheet(){
-  labelPhoto = null; artikelPhoto = null;
-  document.getElementById('labelSlot').innerHTML = `<div class="cam-icon">🏷️</div><div class="cam-label">Label</div>`;
-  document.getElementById('labelSlot').classList.remove('filled');
-  document.getElementById('artikelSlot').innerHTML = `<div class="cam-icon">👕</div><div class="cam-label">Artikel</div>`;
-  document.getElementById('artikelSlot').classList.remove('filled');
-  document.getElementById('fRef').value = '';
-  document.getElementById('fOmschr').value = '';
-  document.getElementById('fMerk').value = '';
-  document.getElementById('newVolgnummer').textContent = `VOLGNR. ${String(nextVolgnummer()).padStart(3,'0')}`;
+/* ---------- new / edit item sheet ---------- */
+let editingItem = null;
+
+function openItemSheet(item){
+  editingItem = item || null;
+  labelPhoto = item ? (item.foto_label || null) : null;
+  artikelPhoto = item ? (item.foto_artikel || null) : null;
+
+  const labelSlot = document.getElementById('labelSlot');
+  const artikelSlot = document.getElementById('artikelSlot');
+
+  if(labelPhoto){
+    labelSlot.innerHTML = `<img src="${labelPhoto}"><div class="retake">opnieuw</div>`;
+    labelSlot.classList.add('filled');
+  } else {
+    labelSlot.innerHTML = `<div class="cam-icon">🏷️</div><div class="cam-label">Label</div>`;
+    labelSlot.classList.remove('filled');
+  }
+  if(artikelPhoto){
+    artikelSlot.innerHTML = `<img src="${artikelPhoto}"><div class="retake">opnieuw</div>`;
+    artikelSlot.classList.add('filled');
+  } else {
+    artikelSlot.innerHTML = `<div class="cam-icon">👕</div><div class="cam-label">Artikel</div>`;
+    artikelSlot.classList.remove('filled');
+  }
+
+  document.getElementById('fRef').value = item ? (item.referentie || '') : '';
+  document.getElementById('fOmschr').value = item ? (item.omschrijving || '') : '';
+  document.getElementById('fMerk').value = item ? (item.merk || '') : '';
+
+  document.getElementById('sheetTitle').textContent = item ? 'Artikel bewerken' : 'Nieuw artikel';
+  document.getElementById('newVolgnummer').textContent = `VOLGNR. ${String(item ? item.volgnummer : nextVolgnummer()).padStart(3,'0')}`;
+  document.getElementById('saveBtn').textContent = item ? 'Wijzigingen opslaan' : 'Opslaan & volgende';
+
   document.getElementById('newSheetBackdrop').classList.add('open');
 }
 
-document.getElementById('addBtn').addEventListener('click', openNewSheet);
+document.getElementById('addBtn').addEventListener('click', ()=> openItemSheet(null));
 document.getElementById('cancelBtn').addEventListener('click', ()=>{
+  editingItem = null;
   document.getElementById('newSheetBackdrop').classList.remove('open');
 });
 
@@ -577,6 +646,7 @@ document.getElementById('labelInput').addEventListener('change', async (e)=>{
   slot.classList.add('filled');
   e.target.value = '';
 });
+
 
 document.getElementById('artikelInput').addEventListener('change', async (e)=>{
   const file = e.target.files[0];
@@ -600,7 +670,22 @@ document.getElementById('saveBtn').addEventListener('click', async ()=>{
   }
 
   const btn = document.getElementById('saveBtn');
-  btn.disabled = true; btn.textContent = 'Opslaan…';
+  btn.disabled = true; btn.textContent = editingItem ? 'Opslaan…' : 'Opslaan…';
+
+  if(editingItem){
+    const updatePayload = { referentie, omschrijving, merk, foto_label: labelPhoto, foto_artikel: artikelPhoto };
+    const { data, error } = await sb.from(TABLE).update(updatePayload).eq('id', editingItem.id).select();
+    btn.disabled = false; btn.textContent = 'Wijzigingen opslaan';
+
+    if(error){ console.error(error); toast('Opslaan mislukt — check verbinding'); return; }
+
+    items = items.map(i => i.id === editingItem.id ? data[0] : i);
+    editingItem = null;
+    render();
+    document.getElementById('newSheetBackdrop').classList.remove('open');
+    toast('Wijzigingen opgeslagen');
+    return;
+  }
 
   const payload = {
     session_id: currentSession,
