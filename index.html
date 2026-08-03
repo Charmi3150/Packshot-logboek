@@ -415,10 +415,14 @@
 <div class="sheet-backdrop" id="sessionSheetBackdrop">
   <div class="sheet">
     <div class="sheet-handle"></div>
-    <h2>Sessie</h2>
-    <div class="sub">Kies een bestaande sessie, of start een nieuwe voor vandaag</div>
+    <h2>Nieuwe sessie</h2>
+    <div class="sub">Kies een bestaande sessie, of geef een titel voor een nieuwe</div>
 
-    <button class="save-btn" id="startSessionBtn">+ Nieuwe sessie starten (vandaag)</button>
+    <div class="field">
+      <label>Titel</label>
+      <input type="text" id="newSessionInput" placeholder="bv. Najaarscollectie" autocomplete="off">
+    </div>
+    <button class="save-btn" id="startSessionBtn">+ Sessie starten</button>
 
     <div class="session-list" id="sessionList"></div>
     <button class="cancel-btn" id="closeSessionBtn">Sluiten</button>
@@ -451,7 +455,7 @@ const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 const TABLE = "packshot_items";
 
-let currentSession = localStorage.getItem('packshot_session') || defaultSessionName();
+let currentSession = localStorage.getItem('packshot_session') || null;
 let items = [];
 let labelPhoto = null, artikelPhoto = null, materiaalPhotos = [null, null];
 let pendingDeleteId = null;
@@ -470,12 +474,8 @@ function updateSaveButtonAvailability(){
   }
 }
 
-function defaultSessionName(){
-  const d = new Date();
-  return d.toLocaleDateString('nl-BE', {day:'2-digit', month:'2-digit', year:'numeric'});
-}
-
 function displaySessionName(name){
+  if(!name) return 'Geen sessie';
   return String(name).replace(/^Shoot\s+/i, '');
 }
 
@@ -589,6 +589,12 @@ async function renderSessionTabs(){
 
 /* ---------- data ---------- */
 async function loadItems(){
+  if(!currentSession){
+    items = [];
+    render();
+    renderSessionTabs();
+    return;
+  }
   document.getElementById('syncState').textContent = 'laden…';
   const { data, error } = await sb.from(TABLE)
     .select('*')
@@ -636,8 +642,8 @@ async function loadSessionList(){
       toast('Sessie gewist');
 
       if(name === currentSession){
-        currentSession = defaultSessionName();
-        localStorage.setItem('packshot_session', currentSession);
+        currentSession = null;
+        localStorage.removeItem('packshot_session');
         items = [];
         render();
       }
@@ -680,8 +686,12 @@ function nextVolgnummer(){
 /* ---------- render ---------- */
 function render(){
   document.getElementById('sessionName').textContent = displaySessionName(currentSession);
-  document.getElementById('itemCount').textContent = `${items.length} artikel${items.length===1?'':'en'}`;
+  document.getElementById('itemCount').textContent = currentSession ? `${items.length} artikel${items.length===1?'':'en'}` : '';
   const list = document.getElementById('list');
+  if(!currentSession){
+    list.innerHTML = `<div class="empty"><div class="stamp">＋</div><p>Nog geen sessie gekozen. Tik op “+ Nieuwe sessie” bovenaan en geef een titel om te beginnen.</p></div>`;
+    return;
+  }
   if(items.length === 0){
     list.innerHTML = `<div class="empty"><div class="stamp">＋</div><p>Nog geen artikels in deze sessie. Tik op “Nieuw artikel” om te beginnen.</p></div>`;
     return;
@@ -836,7 +846,16 @@ function openItemSheet(item){
   document.getElementById('newSheetBackdrop').classList.add('open');
 }
 
-document.getElementById('addBtn').addEventListener('click', ()=> openItemSheet(null));
+document.getElementById('addBtn').addEventListener('click', ()=>{
+  if(!currentSession){
+    toast('Start eerst een sessie via "+ Nieuwe sessie"');
+    document.getElementById('newSessionInput').value = '';
+    loadSessionList();
+    document.getElementById('sessionSheetBackdrop').classList.add('open');
+    return;
+  }
+  openItemSheet(null);
+});
 document.getElementById('cancelBtn').addEventListener('click', ()=>{
   editingItem = null;
   document.getElementById('newSheetBackdrop').classList.remove('open');
@@ -1128,6 +1147,7 @@ document.getElementById('exportPdfBtn').addEventListener('click', exportToPDF);
 
 /* ---------- session sheet ---------- */
 document.getElementById('switchSessionBtn').addEventListener('click', ()=>{
+  document.getElementById('newSessionInput').value = '';
   loadSessionList();
   document.getElementById('sessionSheetBackdrop').classList.add('open');
 });
@@ -1135,7 +1155,12 @@ document.getElementById('closeSessionBtn').addEventListener('click', ()=>{
   document.getElementById('sessionSheetBackdrop').classList.remove('open');
 });
 document.getElementById('startSessionBtn').addEventListener('click', ()=>{
-  setSession(defaultSessionName());
+  const name = document.getElementById('newSessionInput').value.trim();
+  if(!name){
+    toast('Geef eerst een titel voor de sessie');
+    return;
+  }
+  setSession(name);
   document.getElementById('sessionSheetBackdrop').classList.remove('open');
 });
 
