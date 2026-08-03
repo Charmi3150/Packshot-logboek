@@ -1,0 +1,769 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>Packshot Log</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@700;800;900&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<style>
+  :root{
+    --paper:#EDEAE3;
+    --paper-deep:#E2DDD1;
+    --card:#FFFFFF;
+    --ink:#1A1918;
+    --ink-soft:#5B584F;
+    --ink-faint:#9A968A;
+    --line:#D9D3C4;
+    --accent:#B5482F;
+    --accent-ink:#FFF6F1;
+    --tag:#8A8368;
+    --tag-soft:#EFE6CE;
+    --ok:#3E6B4F;
+    --radius:14px;
+    --safe-bottom: env(safe-area-inset-bottom, 0px);
+  }
+  *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
+  html,body{margin:0;padding:0;background:var(--paper);color:var(--ink);
+    font-family:'Inter',sans-serif; overscroll-behavior-y:contain;}
+  body{
+    background-image:
+      radial-gradient(circle at 1px 1px, rgba(26,25,24,0.05) 1px, transparent 0);
+    background-size: 16px 16px;
+    min-height:100vh;
+    padding-bottom: calc(96px + var(--safe-bottom));
+  }
+  header{
+    position:sticky; top:0; z-index:20;
+    background:var(--paper);
+    border-bottom:1px solid var(--line);
+    padding:18px 18px 14px;
+  }
+  header::after{
+    content:"";
+    display:block;
+    position:absolute; left:0; right:0; bottom:-1px; height:1px;
+    background: repeating-linear-gradient(90deg, var(--ink-faint) 0 6px, transparent 6px 12px);
+    opacity:.4;
+  }
+  .eyebrow{
+    font-family:'JetBrains Mono', monospace;
+    font-size:11px; letter-spacing:.14em; text-transform:uppercase;
+    color:var(--accent); font-weight:700; margin-bottom:4px;
+  }
+  h1{
+    font-family:'Archivo', sans-serif; font-weight:900;
+    font-size:26px; letter-spacing:-0.02em; margin:0 0 12px;
+  }
+  .session-row{
+    display:flex; align-items:center; justify-content:space-between; gap:10px;
+  }
+  .session-pill{
+    font-family:'JetBrains Mono', monospace; font-size:13px; font-weight:500;
+    background:var(--card); border:1px solid var(--line); border-radius:20px;
+    padding:7px 14px; color:var(--ink-soft); display:flex; align-items:center; gap:8px;
+    max-width:70%;
+  }
+  .session-pill b{color:var(--ink); font-weight:700;}
+  .session-btn{
+    font-family:'Inter',sans-serif; font-size:13px; font-weight:600;
+    background:none; border:none; color:var(--accent); padding:8px 4px; cursor:pointer;
+  }
+  main{padding:16px;}
+  .count-row{
+    display:flex; align-items:baseline; justify-content:space-between;
+    padding:2px 4px 14px; color:var(--ink-faint); font-size:12px;
+    font-family:'JetBrains Mono', monospace; letter-spacing:.05em;
+  }
+  .day-header{
+    display:flex; align-items:center; gap:10px;
+    margin:22px 4px 10px;
+  }
+  .day-header:first-child{margin-top:0;}
+  .day-header .tab{
+    font-family:'Archivo',sans-serif; font-weight:800; font-size:13px;
+    background:var(--ink); color:var(--paper); padding:5px 12px 5px 10px;
+    border-radius:0 6px 6px 0; text-transform:capitalize;
+    position:relative;
+  }
+  .day-header .tab::before{
+    content:""; position:absolute; left:-8px; top:0; border-style:solid;
+    border-width:0 0 100% 8px; border-color:transparent transparent transparent var(--ink);
+  }
+  .day-header .n{
+    font-family:'JetBrains Mono',monospace; font-size:11px; color:var(--ink-faint);
+  }
+  .day-header .rule{flex:1; height:1px; background:var(--line);}
+  .export-btn{
+    background:var(--card); border:1px solid var(--line); border-radius:20px;
+    padding:7px 12px; font-family:'JetBrains Mono',monospace; font-size:12px; font-weight:600;
+    color:var(--ink-soft); display:flex; align-items:center; gap:5px; flex-shrink:0;
+  }
+  .empty{
+    text-align:center; padding:60px 20px; color:var(--ink-faint);
+  }
+  .empty .stamp{
+    display:inline-block; border:2px dashed var(--ink-faint); border-radius:50%;
+    width:64px; height:64px; line-height:60px; font-size:26px; margin-bottom:14px;
+  }
+  .empty p{font-size:14px; max-width:240px; margin:0 auto;}
+  .card{
+    background:var(--card); border-radius:var(--radius);
+    border:1px solid var(--line);
+    margin-bottom:12px; overflow:hidden;
+    display:grid; grid-template-columns:52px 1fr;
+    box-shadow:0 1px 0 rgba(26,25,24,0.03);
+  }
+  .num{
+    background:var(--ink); color:var(--paper);
+    font-family:'JetBrains Mono', monospace; font-weight:700; font-size:15px;
+    display:flex; align-items:center; justify-content:center;
+    writing-mode:vertical-rl; text-orientation:mixed;
+    padding:10px 0; letter-spacing:.05em;
+    position:relative;
+  }
+  .num::after{
+    content:""; position:absolute; right:-1px; top:0; bottom:0; width:1px;
+    background: repeating-linear-gradient(0deg, var(--paper) 0 5px, transparent 5px 10px);
+    opacity:.35;
+  }
+  .card-body{padding:12px 14px 14px;}
+  .photos{
+    display:flex; align-items:center; gap:0; margin-bottom:10px;
+  }
+  .thumb{
+    width:64px; height:64px; border-radius:9px; object-fit:cover;
+    background:var(--paper-deep); border:1px solid var(--line);
+    flex-shrink:0;
+  }
+  .thumb.empty-slot{
+    display:flex; align-items:center; justify-content:center;
+    color:var(--ink-faint); font-size:10px; font-family:'JetBrains Mono',monospace;
+  }
+  .stitch{
+    width:20px; height:1px; flex-shrink:0;
+    background: repeating-linear-gradient(90deg, var(--tag) 0 4px, transparent 4px 8px);
+    margin:0 2px;
+  }
+  .thumb-label{
+    font-family:'JetBrains Mono',monospace; font-size:9px; text-transform:uppercase;
+    letter-spacing:.08em; color:var(--ink-faint); text-align:center; margin-top:3px;
+  }
+  .thumb-col{display:flex; flex-direction:column; align-items:center;}
+  .meta-row{display:flex; align-items:flex-start; justify-content:space-between; gap:8px;}
+  .ref{
+    font-family:'JetBrains Mono',monospace; font-weight:700; font-size:14px; color:var(--ink);
+    background:var(--tag-soft); padding:2px 7px; border-radius:5px; display:inline-block;
+  }
+  .merk{
+    font-size:11px; font-weight:600; color:var(--tag); text-transform:uppercase; letter-spacing:.06em;
+    margin-top:5px;
+  }
+  .omschr{font-size:14px; color:var(--ink-soft); margin-top:5px; line-height:1.3;}
+  .card-actions{display:flex; gap:6px;}
+  .icon-btn{
+    background:none; border:none; color:var(--ink-faint); font-size:16px; padding:4px; cursor:pointer;
+    line-height:1;
+  }
+  .fab{
+    position:fixed; right:18px; bottom:calc(20px + var(--safe-bottom)); z-index:30;
+    background:var(--accent); color:var(--accent-ink); border:none; border-radius:30px;
+    padding:16px 24px 16px 20px; font-family:'Archivo',sans-serif; font-weight:800; font-size:15px;
+    display:flex; align-items:center; gap:9px; box-shadow:0 6px 18px rgba(181,72,47,0.35);
+  }
+  .fab span.plus{font-size:20px; line-height:1;}
+
+  /* Modal */
+  .sheet-backdrop{
+    position:fixed; inset:0; background:rgba(26,25,24,0.5); z-index:50;
+    display:none; align-items:flex-end;
+  }
+  .sheet-backdrop.open{display:flex;}
+  .sheet{
+    background:var(--paper); width:100%; max-height:92vh; overflow-y:auto;
+    border-radius:20px 20px 0 0; padding:18px 18px calc(24px + var(--safe-bottom));
+    animation:slideup .22s ease-out;
+  }
+  @keyframes slideup{from{transform:translateY(24px); opacity:0;} to{transform:translateY(0); opacity:1;}}
+  .sheet-handle{width:36px; height:4px; background:var(--line); border-radius:2px; margin:0 auto 14px;}
+  .sheet h2{font-family:'Archivo',sans-serif; font-size:19px; margin:0 0 4px;}
+  .sheet .sub{font-size:12px; color:var(--ink-faint); margin-bottom:18px; font-family:'JetBrains Mono',monospace;}
+  .capture-row{display:flex; gap:10px; margin-bottom:18px;}
+  .capture-slot{
+    flex:1; aspect-ratio:1; border-radius:12px; border:2px dashed var(--line);
+    background:var(--card); display:flex; flex-direction:column; align-items:center; justify-content:center;
+    color:var(--ink-faint); position:relative; overflow:hidden; cursor:pointer;
+  }
+  .capture-slot.filled{border-style:solid; border-color:var(--ok);}
+  .capture-slot img{position:absolute; inset:0; width:100%; height:100%; object-fit:cover;}
+  .capture-slot .cam-icon{font-size:26px; margin-bottom:6px;}
+  .capture-slot .cam-label{font-size:11px; font-weight:600; text-transform:uppercase; letter-spacing:.06em;}
+  .capture-slot .retake{
+    position:absolute; bottom:6px; right:6px; background:rgba(26,25,24,.65); color:#fff;
+    font-size:10px; padding:3px 7px; border-radius:6px; font-family:'JetBrains Mono',monospace;
+  }
+  .field{margin-bottom:14px;}
+  .field label{
+    display:block; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.06em;
+    color:var(--ink-faint); margin-bottom:6px; font-family:'JetBrains Mono',monospace;
+  }
+  .field input{
+    width:100%; border:1px solid var(--line); border-radius:9px; padding:12px 13px;
+    font-size:16px; font-family:'Inter',sans-serif; background:var(--card); color:var(--ink);
+  }
+  .field input:focus{outline:2px solid var(--accent); outline-offset:1px;}
+  .save-btn{
+    width:100%; background:var(--ink); color:var(--paper); border:none; border-radius:12px;
+    padding:15px; font-family:'Archivo',sans-serif; font-weight:800; font-size:15px; margin-top:6px;
+  }
+  .save-btn:disabled{opacity:.4;}
+  .cancel-btn{
+    width:100%; background:none; border:none; color:var(--ink-faint); padding:12px;
+    font-size:14px; font-weight:600; margin-top:4px;
+  }
+
+  /* Session sheet */
+  .session-list{margin:6px 0 16px;}
+  .session-item{
+    display:flex; justify-content:space-between; align-items:center;
+    padding:12px 4px; border-bottom:1px solid var(--line); font-family:'JetBrains Mono',monospace; font-size:14px;
+  }
+  .session-item span.n{color:var(--ink-faint); font-size:12px;}
+
+  /* Toast */
+  #toast{
+    position:fixed; left:50%; bottom:calc(96px + var(--safe-bottom)); transform:translateX(-50%) translateY(20px);
+    background:var(--ink); color:var(--paper); padding:11px 18px; border-radius:24px;
+    font-size:13px; font-weight:600; z-index:80; opacity:0; transition:all .25s ease; pointer-events:none;
+  }
+  #toast.show{opacity:1; transform:translateX(-50%) translateY(0);}
+
+  /* Confirm */
+  .confirm-backdrop{
+    position:fixed; inset:0; background:rgba(26,25,24,.5); z-index:90; display:none;
+    align-items:center; justify-content:center; padding:24px;
+  }
+  .confirm-backdrop.open{display:flex;}
+  .confirm-box{background:var(--card); border-radius:16px; padding:22px; max-width:320px; width:100%;}
+  .confirm-box p{font-size:14px; margin:0 0 18px; color:var(--ink-soft);}
+  .confirm-box .row{display:flex; gap:10px;}
+  .confirm-box button{flex:1; padding:11px; border-radius:9px; font-weight:700; font-size:14px; border:none;}
+  .confirm-box .no{background:var(--paper-deep); color:var(--ink);}
+  .confirm-box .yes{background:var(--accent); color:var(--accent-ink);}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="eyebrow">Packshot volgorde</div>
+  <h1>Photoshoot log</h1>
+  <div class="session-row">
+    <div class="session-pill" id="sessionPill">📦 <b id="sessionName">—</b></div>
+    <button class="session-btn" id="switchSessionBtn">Sessie ▾</button>
+  </div>
+  <button class="export-btn" id="exportPdfBtn" style="margin-top:10px; width:100%; justify-content:center;">⬇ Exporteer PDF (met foto's)</button>
+</header>
+
+<main>
+  <div class="count-row"><span id="itemCount">0 artikelen</span><span id="syncState"></span></div>
+  <div id="list"></div>
+</main>
+
+<button class="fab" id="addBtn"><span class="plus">+</span> Nieuw artikel</button>
+
+<!-- New item sheet -->
+<div class="sheet-backdrop" id="newSheetBackdrop">
+  <div class="sheet">
+    <div class="sheet-handle"></div>
+    <h2>Nieuw artikel</h2>
+    <div class="sub" id="newVolgnummer">VOLGNR. —</div>
+
+    <div class="capture-row">
+      <div class="thumb-col" style="flex:1">
+        <div class="capture-slot" id="labelSlot">
+          <div class="cam-icon">🏷️</div>
+          <div class="cam-label">Label</div>
+        </div>
+      </div>
+      <div class="thumb-col" style="flex:1">
+        <div class="capture-slot" id="artikelSlot">
+          <div class="cam-icon">👕</div>
+          <div class="cam-label">Artikel</div>
+        </div>
+      </div>
+    </div>
+    <input type="file" accept="image/*" capture="environment" id="labelInput" style="display:none">
+    <input type="file" accept="image/*" capture="environment" id="artikelInput" style="display:none">
+
+    <div class="field">
+      <label>Referentie</label>
+      <input type="text" id="fRef" placeholder="bv. A12345" autocomplete="off" autocapitalize="characters">
+    </div>
+    <div class="field">
+      <label>Korte omschrijving</label>
+      <input type="text" id="fOmschr" placeholder="bv. blauwe blouse met knopen" autocomplete="off">
+    </div>
+    <div class="field">
+      <label>Merk</label>
+      <input type="text" id="fMerk" placeholder="bv. Only" autocomplete="off">
+    </div>
+
+    <button class="save-btn" id="saveBtn">Opslaan &amp; volgende</button>
+    <button class="cancel-btn" id="cancelBtn">Annuleren</button>
+  </div>
+</div>
+
+<!-- Session switch sheet -->
+<div class="sheet-backdrop" id="sessionSheetBackdrop">
+  <div class="sheet">
+    <div class="sheet-handle"></div>
+    <h2>Sessie</h2>
+    <div class="sub">Kies een bestaande sessie of start een nieuwe</div>
+
+    <div class="field">
+      <label>Nieuwe sessienaam</label>
+      <input type="text" id="newSessionInput" placeholder="bv. Shoot 03-08 najaarscollectie">
+    </div>
+    <button class="save-btn" id="startSessionBtn">Nieuwe sessie starten</button>
+
+    <div class="session-list" id="sessionList"></div>
+    <button class="cancel-btn" id="closeSessionBtn">Sluiten</button>
+  </div>
+</div>
+
+<div class="confirm-backdrop" id="confirmBackdrop">
+  <div class="confirm-box">
+    <p id="confirmText">Weet je het zeker?</p>
+    <div class="row">
+      <button class="no" id="confirmNo">Annuleren</button>
+      <button class="yes" id="confirmYes">Verwijderen</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+/* ====== CONFIG — vul hier je Supabase gegevens in ====== */
+const SUPABASE_URL = "https://npztyprvrnazuvspjbvn.supabase.co";
+const SUPABASE_ANON_KEY = "VUL_HIER_JE_ANON_KEY_IN";
+/* ========================================================= */
+
+const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+const TABLE = "packshot_items";
+
+let currentSession = localStorage.getItem('packshot_session') || defaultSessionName();
+let items = [];
+let labelPhoto = null, artikelPhoto = null;
+let pendingDeleteId = null;
+
+function defaultSessionName(){
+  const d = new Date();
+  return `Shoot ${d.toLocaleDateString('nl-BE', {day:'2-digit', month:'2-digit', year:'numeric'})}`;
+}
+
+function toast(msg){
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  clearTimeout(toast._t);
+  toast._t = setTimeout(()=>t.classList.remove('show'), 2000);
+}
+
+function customConfirm(text){
+  return new Promise(resolve=>{
+    document.getElementById('confirmText').textContent = text;
+    document.getElementById('confirmBackdrop').classList.add('open');
+    const yes = document.getElementById('confirmYes');
+    const no = document.getElementById('confirmNo');
+    function cleanup(v){
+      document.getElementById('confirmBackdrop').classList.remove('open');
+      yes.removeEventListener('click', onYes);
+      no.removeEventListener('click', onNo);
+      resolve(v);
+    }
+    function onYes(){cleanup(true);}
+    function onNo(){cleanup(false);}
+    yes.addEventListener('click', onYes);
+    no.addEventListener('click', onNo);
+  });
+}
+
+/* ---------- image compression ---------- */
+function compressImage(file, maxDim=1100, quality=0.72){
+  return new Promise((resolve, reject)=>{
+    const img = new Image();
+    const reader = new FileReader();
+    reader.onload = e => { img.src = e.target.result; };
+    reader.onerror = reject;
+    img.onload = () => {
+      let w = img.width, h = img.height;
+      if(w > h && w > maxDim){ h = Math.round(h * maxDim/w); w = maxDim; }
+      else if(h > maxDim){ w = Math.round(w * maxDim/h); h = maxDim; }
+      const canvas = document.createElement('canvas');
+      canvas.width = w; canvas.height = h;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(img, 0, 0, w, h);
+      resolve(canvas.toDataURL('image/jpeg', quality));
+    };
+    img.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+
+/* ---------- data ---------- */
+async function loadItems(){
+  document.getElementById('syncState').textContent = 'laden…';
+  const { data, error } = await sb.from(TABLE)
+    .select('*')
+    .eq('session_id', currentSession)
+    .order('volgnummer', { ascending: true });
+  if(error){ console.error(error); toast('Kon niet laden'); document.getElementById('syncState').textContent=''; return; }
+  items = data || [];
+  document.getElementById('syncState').textContent = '';
+  render();
+}
+
+async function loadSessionList(){
+  const { data, error } = await sb.from(TABLE).select('session_id, created_at').order('created_at', {ascending:false});
+  const box = document.getElementById('sessionList');
+  if(error){ box.innerHTML = ''; return; }
+  const counts = {};
+  (data||[]).forEach(r=>{ counts[r.session_id] = (counts[r.session_id]||0)+1; });
+  const names = Object.keys(counts);
+  if(names.length === 0){ box.innerHTML = '<div class="sub">Nog geen eerdere sessies</div>'; return; }
+  box.innerHTML = names.map(n => `
+    <div class="session-item" data-session="${escapeAttr(n)}">
+      <span>${escapeHtml(n)}</span>
+      <span class="n">${counts[n]} art. ›</span>
+    </div>`).join('');
+  box.querySelectorAll('.session-item').forEach(el=>{
+    el.addEventListener('click', ()=>{
+      setSession(el.dataset.session);
+      document.getElementById('sessionSheetBackdrop').classList.remove('open');
+    });
+  });
+}
+
+function setSession(name){
+  currentSession = name;
+  localStorage.setItem('packshot_session', name);
+  document.getElementById('sessionName').textContent = name;
+  loadItems();
+}
+
+function dayKey(iso){
+  const d = new Date(iso);
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+}
+function dayLabel(iso){
+  const d = new Date(iso);
+  return d.toLocaleDateString('nl-BE', {weekday:'long', day:'numeric', month:'long', year:'numeric'});
+}
+function groupByDay(list){
+  const groups = {};
+  list.forEach(it=>{
+    const k = dayKey(it.created_at);
+    if(!groups[k]) groups[k] = { key:k, label: dayLabel(it.created_at), items: [] };
+    groups[k].items.push(it);
+  });
+  return Object.values(groups).sort((a,b)=> a.key.localeCompare(b.key));
+}
+
+function nextVolgnummer(){
+  if(items.length === 0) return 1;
+  return Math.max(...items.map(i=>i.volgnummer)) + 1;
+}
+
+/* ---------- render ---------- */
+function render(){
+  document.getElementById('sessionName').textContent = currentSession;
+  document.getElementById('itemCount').textContent = `${items.length} artikel${items.length===1?'':'en'}`;
+  const list = document.getElementById('list');
+  if(items.length === 0){
+    list.innerHTML = `<div class="empty"><div class="stamp">＋</div><p>Nog geen artikels in deze sessie. Tik op “Nieuw artikel” om te beginnen.</p></div>`;
+    return;
+  }
+  const groups = groupByDay(items);
+  list.innerHTML = groups.map(g => `
+    <div class="day-header">
+      <span class="tab">${escapeHtml(g.label)}</span>
+      <span class="n">${g.items.length} art.</span>
+      <span class="rule"></span>
+    </div>
+    ${g.items.map(it => `
+    <div class="card">
+      <div class="num">${String(it.volgnummer).padStart(3,'0')}</div>
+      <div class="card-body">
+        <div class="photos">
+          <div class="thumb-col">
+            ${it.foto_label ? `<img class="thumb" src="${it.foto_label}">` : `<div class="thumb empty-slot">—</div>`}
+            <div class="thumb-label">Label</div>
+          </div>
+          <div class="stitch"></div>
+          <div class="thumb-col">
+            ${it.foto_artikel ? `<img class="thumb" src="${it.foto_artikel}">` : `<div class="thumb empty-slot">—</div>`}
+            <div class="thumb-label">Artikel</div>
+          </div>
+          <div style="flex:1"></div>
+          <div class="card-actions">
+            <button class="icon-btn" data-del="${it.id}">🗑️</button>
+          </div>
+        </div>
+        <div class="meta-row">
+          <div>
+            <span class="ref">${escapeHtml(it.referentie || '—')}</span>
+            <div class="omschr">${escapeHtml(it.omschrijving || '')}</div>
+            ${it.merk ? `<div class="merk">${escapeHtml(it.merk)}</div>` : ''}
+          </div>
+        </div>
+      </div>
+    </div>
+  `).join('')}
+  `).join('');
+
+  list.querySelectorAll('[data-del]').forEach(btn=>{
+    btn.addEventListener('click', async ()=>{
+      const ok = await customConfirm('Dit artikel verwijderen uit de lijst?');
+      if(!ok) return;
+      const id = btn.dataset.del;
+      const { error } = await sb.from(TABLE).delete().eq('id', id);
+      if(error){ toast('Verwijderen mislukt'); return; }
+      items = items.filter(i => i.id !== id);
+      render();
+      toast('Verwijderd');
+    });
+  });
+}
+
+function escapeHtml(s){
+  return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+function escapeAttr(s){ return escapeHtml(s); }
+
+/* ---------- new item sheet ---------- */
+function openNewSheet(){
+  labelPhoto = null; artikelPhoto = null;
+  document.getElementById('labelSlot').innerHTML = `<div class="cam-icon">🏷️</div><div class="cam-label">Label</div>`;
+  document.getElementById('labelSlot').classList.remove('filled');
+  document.getElementById('artikelSlot').innerHTML = `<div class="cam-icon">👕</div><div class="cam-label">Artikel</div>`;
+  document.getElementById('artikelSlot').classList.remove('filled');
+  document.getElementById('fRef').value = '';
+  document.getElementById('fOmschr').value = '';
+  document.getElementById('fMerk').value = '';
+  document.getElementById('newVolgnummer').textContent = `VOLGNR. ${String(nextVolgnummer()).padStart(3,'0')}`;
+  document.getElementById('newSheetBackdrop').classList.add('open');
+}
+
+document.getElementById('addBtn').addEventListener('click', openNewSheet);
+document.getElementById('cancelBtn').addEventListener('click', ()=>{
+  document.getElementById('newSheetBackdrop').classList.remove('open');
+});
+
+document.getElementById('labelSlot').addEventListener('click', ()=> document.getElementById('labelInput').click());
+document.getElementById('artikelSlot').addEventListener('click', ()=> document.getElementById('artikelInput').click());
+
+document.getElementById('labelInput').addEventListener('change', async (e)=>{
+  const file = e.target.files[0];
+  if(!file) return;
+  toast('Foto verwerken…');
+  labelPhoto = await compressImage(file);
+  const slot = document.getElementById('labelSlot');
+  slot.innerHTML = `<img src="${labelPhoto}"><div class="retake">opnieuw</div>`;
+  slot.classList.add('filled');
+  e.target.value = '';
+});
+
+document.getElementById('artikelInput').addEventListener('change', async (e)=>{
+  const file = e.target.files[0];
+  if(!file) return;
+  toast('Foto verwerken…');
+  artikelPhoto = await compressImage(file);
+  const slot = document.getElementById('artikelSlot');
+  slot.innerHTML = `<img src="${artikelPhoto}"><div class="retake">opnieuw</div>`;
+  slot.classList.add('filled');
+  e.target.value = '';
+});
+
+document.getElementById('saveBtn').addEventListener('click', async ()=>{
+  const referentie = document.getElementById('fRef').value.trim();
+  const omschrijving = document.getElementById('fOmschr').value.trim();
+  const merk = document.getElementById('fMerk').value.trim();
+
+  if(!referentie && !labelPhoto){
+    toast('Vul minstens een referentie of foto in');
+    return;
+  }
+
+  const btn = document.getElementById('saveBtn');
+  btn.disabled = true; btn.textContent = 'Opslaan…';
+
+  const payload = {
+    session_id: currentSession,
+    volgnummer: nextVolgnummer(),
+    referentie, omschrijving, merk,
+    foto_label: labelPhoto,
+    foto_artikel: artikelPhoto
+  };
+
+  const { data, error } = await sb.from(TABLE).insert(payload).select();
+  btn.disabled = false; btn.textContent = 'Opslaan & volgende';
+
+  if(error){ console.error(error); toast('Opslaan mislukt — check verbinding'); return; }
+
+  items.push(data[0]);
+  render();
+  toast(`Artikel ${String(payload.volgnummer).padStart(3,'0')} opgeslagen`);
+
+  // reset for next capture, keep sheet open for fast successive shooting
+  labelPhoto = null; artikelPhoto = null;
+  document.getElementById('labelSlot').innerHTML = `<div class="cam-icon">🏷️</div><div class="cam-label">Label</div>`;
+  document.getElementById('labelSlot').classList.remove('filled');
+  document.getElementById('artikelSlot').innerHTML = `<div class="cam-icon">👕</div><div class="cam-label">Artikel</div>`;
+  document.getElementById('artikelSlot').classList.remove('filled');
+  document.getElementById('fRef').value = '';
+  document.getElementById('fOmschr').value = '';
+  document.getElementById('fMerk').value = '';
+  document.getElementById('newVolgnummer').textContent = `VOLGNR. ${String(nextVolgnummer()).padStart(3,'0')}`;
+  document.getElementById('fRef').focus();
+});
+
+/* ---------- PDF export ---------- */
+async function exportToPDF(){
+  if(items.length === 0){ toast('Geen artikelen om te exporteren'); return; }
+  toast('PDF wordt gemaakt…');
+
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({ unit: 'mm', format: 'a4' });
+  const pageW = 210, pageH = 297, margin = 15;
+  const usableW = pageW - margin*2;
+  let y = margin;
+
+  // Title
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(16);
+  doc.text(currentSession, margin, y);
+  y += 6;
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(9);
+  doc.setTextColor(120);
+  doc.text(`Packshot log — geëxporteerd ${new Date().toLocaleDateString('nl-BE')} — ${items.length} artikelen`, margin, y);
+  doc.setTextColor(20);
+  y += 8;
+
+  const imgSize = 32;
+  const rowH = imgSize + 12;
+
+  function ensureSpace(needed){
+    if(y + needed > pageH - margin){
+      doc.addPage();
+      y = margin;
+    }
+  }
+
+  const groups = groupByDay(items);
+  for(const g of groups){
+    ensureSpace(14);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(12);
+    doc.text(g.label.charAt(0).toUpperCase() + g.label.slice(1), margin, y);
+    doc.setDrawColor(200);
+    doc.line(margin, y+2, pageW-margin, y+2);
+    y += 9;
+
+    for(const it of g.items){
+      ensureSpace(rowH + 4);
+      const rowTop = y;
+
+      // volgnummer badge
+      doc.setFillColor(26,25,24);
+      doc.rect(margin, rowTop, 12, imgSize, 'F');
+      doc.setTextColor(255);
+      doc.setFont('helvetica','bold');
+      doc.setFontSize(11);
+      doc.text(String(it.volgnummer).padStart(3,'0'), margin+6, rowTop + imgSize/2, {align:'center', angle:90});
+      doc.setTextColor(20);
+
+      let x = margin + 16;
+      try{
+        if(it.foto_label){
+          doc.addImage(it.foto_label, 'JPEG', x, rowTop, imgSize, imgSize);
+        } else {
+          doc.setDrawColor(210); doc.rect(x, rowTop, imgSize, imgSize);
+        }
+      }catch(e){ doc.setDrawColor(210); doc.rect(x, rowTop, imgSize, imgSize); }
+      doc.setFontSize(6.5); doc.setTextColor(140);
+      doc.text('LABEL', x + imgSize/2, rowTop + imgSize + 3.5, {align:'center'});
+      doc.setTextColor(20);
+      x += imgSize + 4;
+
+      try{
+        if(it.foto_artikel){
+          doc.addImage(it.foto_artikel, 'JPEG', x, rowTop, imgSize, imgSize);
+        } else {
+          doc.setDrawColor(210); doc.rect(x, rowTop, imgSize, imgSize);
+        }
+      }catch(e){ doc.setDrawColor(210); doc.rect(x, rowTop, imgSize, imgSize); }
+      doc.setFontSize(6.5); doc.setTextColor(140);
+      doc.text('ARTIKEL', x + imgSize/2, rowTop + imgSize + 3.5, {align:'center'});
+      doc.setTextColor(20);
+      x += imgSize + 8;
+
+      const textW = pageW - margin - x;
+      doc.setFont('helvetica','bold'); doc.setFontSize(11);
+      doc.text(it.referentie || '—', x, rowTop + 6);
+      doc.setFont('helvetica','normal'); doc.setFontSize(9.5);
+      const omschrLines = doc.splitTextToSize(it.omschrijving || '', textW);
+      doc.text(omschrLines, x, rowTop + 13);
+      if(it.merk){
+        doc.setFont('helvetica','bold'); doc.setFontSize(8);
+        doc.setTextColor(138,131,104);
+        doc.text(it.merk.toUpperCase(), x, rowTop + 13 + (omschrLines.length*4.2) + 4);
+        doc.setTextColor(20);
+      }
+
+      y = rowTop + rowH;
+      doc.setDrawColor(230);
+      doc.line(margin, y-2, pageW-margin, y-2);
+    }
+    y += 4;
+  }
+
+  doc.save(`packshot-${currentSession.replace(/[^a-z0-9]/gi,'_')}.pdf`);
+  toast('PDF gedownload');
+}
+
+document.getElementById('exportPdfBtn').addEventListener('click', exportToPDF);
+
+/* ---------- session sheet ---------- */
+document.getElementById('switchSessionBtn').addEventListener('click', ()=>{
+  document.getElementById('newSessionInput').value = '';
+  loadSessionList();
+  document.getElementById('sessionSheetBackdrop').classList.add('open');
+});
+document.getElementById('closeSessionBtn').addEventListener('click', ()=>{
+  document.getElementById('sessionSheetBackdrop').classList.remove('open');
+});
+document.getElementById('startSessionBtn').addEventListener('click', ()=>{
+  const name = document.getElementById('newSessionInput').value.trim();
+  setSession(name || defaultSessionName());
+  document.getElementById('sessionSheetBackdrop').classList.remove('open');
+});
+
+/* close sheets on backdrop tap */
+[['newSheetBackdrop'], ['sessionSheetBackdrop']].forEach(([id])=>{
+  document.getElementById(id).addEventListener('click', (e)=>{
+    if(e.target.id === id) document.getElementById(id).classList.remove('open');
+  });
+});
+
+/* ---------- init ---------- */
+document.getElementById('sessionName').textContent = currentSession;
+loadItems();
+</script>
+</body>
+</html>
