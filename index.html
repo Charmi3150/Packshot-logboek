@@ -725,7 +725,7 @@ document.getElementById('labelInput').addEventListener('change', async (e)=>{
   const file = e.target.files[0];
   if(!file) return;
   toast('Foto verwerken…');
-  labelPhoto = await compressImage(file);
+  labelPhoto = await compressImage(file, 1400, 0.82); // label moet leesbaar blijven
   const slot = document.getElementById('labelSlot');
   slot.innerHTML = `<img src="${labelPhoto}"><div class="retake">opnieuw</div>`;
   slot.classList.add('filled');
@@ -737,7 +737,7 @@ document.getElementById('artikelInput').addEventListener('change', async (e)=>{
   const file = e.target.files[0];
   if(!file) return;
   toast('Foto verwerken…');
-  artikelPhoto = await compressImage(file);
+  artikelPhoto = await compressImage(file, 650, 0.5); // enkel geheugensteuntje, mag licht zijn
   const slot = document.getElementById('artikelSlot');
   slot.innerHTML = `<img src="${artikelPhoto}"><div class="retake">opnieuw</div>`;
   slot.classList.add('filled');
