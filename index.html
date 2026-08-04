@@ -226,14 +226,14 @@
   .sheet .sub{font-size:12px; color:var(--ink-faint); margin-bottom:18px; font-family:'JetBrains Mono',monospace;}
   .capture-row{display:flex; gap:10px; margin-bottom:18px;}
   .capture-slot{
-    flex:1; aspect-ratio:1; border-radius:12px; border:2px dashed var(--line);
+    width:80px; height:80px; border-radius:12px; border:2px dashed var(--line);
     background:var(--card); display:flex; flex-direction:column; align-items:center; justify-content:center;
-    color:var(--ink-faint); position:relative; overflow:hidden; cursor:pointer;
+    color:var(--ink-faint); position:relative; overflow:hidden; cursor:pointer; flex-shrink:0;
   }
   .capture-slot.filled{border-style:solid; border-color:var(--ok);}
   .capture-slot img{position:absolute; inset:0; width:100%; height:100%; object-fit:cover;}
-  .capture-slot .cam-icon{font-size:26px; margin-bottom:6px;}
-  .capture-slot .cam-label{font-size:11px; font-weight:600; text-transform:uppercase; letter-spacing:.06em;}
+  .capture-slot .cam-icon{font-size:22px; margin-bottom:4px;}
+  .capture-slot .cam-label{font-size:9px; font-weight:600; text-transform:uppercase; letter-spacing:.06em;}
   .capture-slot .retake{
     position:absolute; bottom:6px; right:6px; background:rgba(26,25,24,.65); color:#fff;
     font-size:10px; padding:3px 7px; border-radius:6px; font-family:'JetBrains Mono',monospace;
@@ -365,17 +365,13 @@
     <div class="sub" id="newVolgnummer">VOLGNR. —</div>
 
     <div class="capture-row">
-      <div class="thumb-col" style="flex:1">
-        <div class="capture-slot" id="labelSlot">
-          <div class="cam-icon">🏷️</div>
-          <div class="cam-label">Label</div>
-        </div>
+      <div class="capture-slot" id="labelSlot">
+        <div class="cam-icon">🏷️</div>
+        <div class="cam-label">Label</div>
       </div>
-      <div class="thumb-col" style="flex:1">
-        <div class="capture-slot" id="artikelSlot">
-          <div class="cam-icon">👕</div>
-          <div class="cam-label">Artikel</div>
-        </div>
+      <div class="capture-slot" id="artikelSlot">
+        <div class="cam-icon">👕</div>
+        <div class="cam-label">Artikel</div>
       </div>
     </div>
     <input type="file" accept="image/*" capture="environment" id="labelInput" style="display:none">
@@ -1002,11 +998,6 @@ document.getElementById('saveBtn').addEventListener('click', async ()=>{
   const merk = document.getElementById('fMerk').value.trim();
   const materiaalTekst = document.getElementById('materiaalText').value.trim();
 
-  if(!referentie && !labelPhoto){
-    toast('Vul minstens een referentie of foto in');
-    return;
-  }
-
   // vangnet: waarschuw als deze referentie al bij het vorige artikel hoort
   // (bv. door een dubbele tik of per ongeluk twee keer opslaan)
   if(!editingItem && referentie && items.length){
@@ -1077,6 +1068,21 @@ document.getElementById('saveBtn').addEventListener('click', async ()=>{
 });
 
 /* ---------- PDF export ---------- */
+/* tekent een foto proportioneel binnen een vierkant vak (contain), i.p.v.
+   ze te vervormen door breedte/hoogte te forceren */
+function drawContainedImage(doc, src, x, y, boxSize){
+  let iw = boxSize, ih = boxSize;
+  try{
+    const props = doc.getImageProperties(src);
+    iw = props.width; ih = props.height;
+  }catch(e){ /* val terug op vierkant als eigenschappen niet te lezen zijn */ }
+  const scale = Math.min(boxSize / iw, boxSize / ih);
+  const drawW = iw * scale, drawH = ih * scale;
+  const offsetX = x + (boxSize - drawW) / 2;
+  const offsetY = y + (boxSize - drawH) / 2;
+  doc.addImage(src, 'JPEG', offsetX, offsetY, drawW, drawH);
+}
+
 async function exportToPDF(){
   if(items.length === 0){ toast('Geen artikelen om te exporteren'); return; }
   toast('PDF wordt gemaakt…');
@@ -1160,7 +1166,7 @@ async function exportToPDF(){
     photoSlots.forEach(slot => {
       try{
         if(slot.src){
-          doc.addImage(slot.src, 'JPEG', px, photosTop, photoSize, photoSize);
+          drawContainedImage(doc, slot.src, px, photosTop, photoSize);
         } else {
           doc.setDrawColor(210); doc.rect(px, photosTop, photoSize, photoSize);
         }
@@ -1187,7 +1193,7 @@ async function exportToPDF(){
     y += 1.5;
   }
 
-  doc.save(`packshot-${currentSession.replace(/[^a-z0-9]/gi,'_')}.pdf`);
+  doc.save(`${currentSession.replace(/[\\\/:*?"<>|]/g, '')}.pdf`);
   toast('PDF gedownload');
 }
 
