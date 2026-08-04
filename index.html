@@ -1089,7 +1089,7 @@ async function exportToPDF(){
 
   const { jsPDF } = window.jspdf;
   const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
-  const pageW = 210, pageH = 297, margin = 15;
+  const pageW = 210, pageH = 297, margin = 10;
   const usableW = pageW - margin*2;
   let y = margin;
 
@@ -1099,12 +1099,12 @@ async function exportToPDF(){
     ? new Date(Math.min(...sessionDates)).toLocaleDateString('nl-BE')
     : new Date().toLocaleDateString('nl-BE');
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(16);
+  doc.setFontSize(11);
   doc.text(`Sessie — ${sessionDate}`, margin, y);
-  y += 6;
+  y += 4.5;
   doc.setDrawColor(200);
   doc.line(margin, y, pageW - margin, y);
-  y += 8;
+  y += 6;
 
   function ensureSpace(needed){
     if(y + needed > pageH - margin){
@@ -1114,6 +1114,7 @@ async function exportToPDF(){
   }
 
   const sorted = [...items].sort((a,b) => a.volgnummer - b.volgnummer);
+  const badgeW = 8, gap = 3;
 
   for(const it of sorted){
     const matPhotosArr = parseMaterialPhotos(it.foto_materiaal).filter(Boolean);
@@ -1126,43 +1127,42 @@ async function exportToPDF(){
     ];
     matPhotosArr.forEach((p, i) => photoSlots.push({ src: p, label: matPhotosArr.length > 1 ? `MATERIAAL ${i+1}` : 'MATERIAAL' }));
 
-    const gap = 3;
-    let photoSize = Math.min(26, (usableW - (photoSlots.length - 1) * gap) / photoSlots.length);
-    const rowStartX = margin; // links uitgelijnd
+    const photosAvailW = usableW - badgeW - gap;
+    let photoSize = Math.min(30, (photosAvailW - (photoSlots.length - 1) * gap) / photoSlots.length);
+    const photosStartX = margin + badgeW + gap;
 
     const matTextLines = matLine ? doc.splitTextToSize(matLine, usableW).slice(0, 3) : [];
 
-    // omschrijving + merk komen op dezelfde regel als het volgnummer
-    const badgeW = 13, badgeH = 5, badgeGap = 3;
-    const topTextX = margin + badgeW + badgeGap;
-    const topTextW = usableW - badgeW - badgeGap;
+    // omschrijving + merk op een eigen regel, volledige breedte
     let topLabel = it.omschrijving || '';
     if(it.merk) topLabel = topLabel ? `${topLabel} — ${it.merk.toUpperCase()}` : it.merk.toUpperCase();
-    const topLines = topLabel ? doc.splitTextToSize(topLabel, topTextW).slice(0, 1) : [];
-    const topBlockH = Math.max(badgeH, topLines.length * 3.8);
+    const topLines = topLabel ? doc.splitTextToSize(topLabel, usableW).slice(0, 1) : [];
+    const topBlockH = topLines.length ? 4.5 : 1;
 
     const photosBlockH = photoSize + 3.5;
     const matTextBlockH = matTextLines.length ? (matTextLines.length * 2.9 + 2.5) : 0;
 
-    ensureSpace(topBlockH + 2 + photosBlockH + matTextBlockH + 4);
+    ensureSpace(topBlockH + photosBlockH + matTextBlockH + 4);
     const itemTop = y;
-
-    // klein, subtiel volgnummer-label
-    doc.setFillColor(60,58,55);
-    doc.roundedRect(margin, itemTop, badgeW, badgeH, 1, 1, 'F');
-    doc.setTextColor(255);
-    doc.setFont('helvetica','bold');
-    doc.setFontSize(6.5);
-    doc.text(`NR. ${String(it.volgnummer).padStart(3,'0')}`, margin + badgeW/2, itemTop + 3.5, {align:'center'});
-    doc.setTextColor(20);
 
     if(topLines.length){
       doc.setFont('helvetica','normal'); doc.setFontSize(8);
-      doc.text(topLines, topTextX, itemTop + 3.7);
+      doc.setTextColor(20);
+      doc.text(topLines, margin, itemTop + 3);
     }
 
-    const photosTop = itemTop + topBlockH + 2;
-    let px = rowStartX;
+    const photosTop = itemTop + topBlockH;
+
+    // smalle, subtiele volgnummer-strook links van de foto's
+    doc.setFillColor(60,58,55);
+    doc.rect(margin, photosTop, badgeW, photoSize, 'F');
+    doc.setTextColor(255);
+    doc.setFont('helvetica','bold');
+    doc.setFontSize(7);
+    doc.text(String(it.volgnummer).padStart(3,'0'), margin + badgeW/2, photosTop + photoSize/2, {align:'center', angle:90});
+    doc.setTextColor(20);
+
+    let px = photosStartX;
     photoSlots.forEach(slot => {
       try{
         if(slot.src){
