@@ -12,7 +12,6 @@
 <link href="https://fonts.googleapis.com/css2?family=Archivo:wght@700;800;900&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
 <style>
   :root{
     --paper:#EDEAE3;
@@ -388,7 +387,7 @@
         <div class="mat-slot" id="materiaalSlot0" data-idx="0"><div class="cam-icon">🧵</div></div>
         <div class="mat-slot" id="materiaalSlot1" data-idx="1"><div class="cam-icon">🧵</div></div>
       </div>
-      <textarea id="materiaalText" rows="3" placeholder="Wordt automatisch herkend (kan onnauwkeurig zijn), of typ zelf&#10;bv.&#10;Cotton 95&#10;Elastane 5"></textarea>
+      <textarea id="materiaalText" rows="3" placeholder="Typ hier de samenstelling (optioneel)&#10;bv.&#10;Cotton 95&#10;Elastane 5"></textarea>
       <button type="button" class="copy-btn" id="copyMateriaalBtn">📋 Kopieer</button>
     </div>
     <input type="file" accept="image/*" capture="environment" id="materiaalInput0" style="display:none">
@@ -537,40 +536,6 @@ function compressImage(file, maxDim=1100, quality=0.72){
       const ctx = canvas.getContext('2d');
       ctx.drawImage(img, 0, 0, w, h);
       resolve(canvas.toDataURL('image/jpeg', quality));
-    };
-    img.onerror = reject;
-    reader.readAsDataURL(file);
-  });
-}
-
-/* grijswaarden + wat extra contrast — kan tekstherkenning op een drukke
-   achtergrond (bv. denim) iets helpen, geen garantie */
-function preprocessForOCR(file){
-  return new Promise((resolve, reject)=>{
-    const img = new Image();
-    const reader = new FileReader();
-    reader.onload = e => { img.src = e.target.result; };
-    reader.onerror = reject;
-    img.onload = () => {
-      const maxDim = 1800;
-      let w = img.width, h = img.height;
-      if(w > h && w > maxDim){ h = Math.round(h * maxDim/w); w = maxDim; }
-      else if(h > maxDim){ w = Math.round(w * maxDim/h); h = maxDim; }
-      const canvas = document.createElement('canvas');
-      canvas.width = w; canvas.height = h;
-      const ctx = canvas.getContext('2d');
-      ctx.drawImage(img, 0, 0, w, h);
-      const imgData = ctx.getImageData(0, 0, w, h);
-      const d = imgData.data;
-      const contrast = 1.35;
-      for(let i = 0; i < d.length; i += 4){
-        const gray = 0.299*d[i] + 0.587*d[i+1] + 0.114*d[i+2];
-        let v = (gray - 128) * contrast + 128;
-        v = Math.max(0, Math.min(255, v));
-        d[i] = d[i+1] = d[i+2] = v;
-      }
-      ctx.putImageData(imgData, 0, 0);
-      resolve(canvas.toDataURL('image/png'));
     };
     img.onerror = reject;
     reader.readAsDataURL(file);
@@ -998,28 +963,14 @@ function wireMaterialSlot(idx){
     updateSaveButtonAvailability();
     toast('Foto verwerken…');
     try{
-      // leesbare, lichte foto bewaren
+      // enkel een leesbare, lichte foto bewaren — geen automatische tekstherkenning
+      // (te onbetrouwbaar bij dichtbedrukte of meertalige labels)
       materiaalPhotos[idx] = await compressImage(file, 900, 0.6);
       slot.innerHTML = `<img src="${materiaalPhotos[idx]}"><div class="retake">opnieuw</div>`;
       slot.classList.add('filled');
-
-      // tekst herkennen — exact overnemen zoals herkend, geen filtering.
-      // Kan onnauwkeurig zijn bij drukke achtergronden of klein lettertype;
-      // corrigeer/wis wat nodig is in het tekstvak hieronder.
-      toast('Tekst herkennen…');
-      const ocrSource = await preprocessForOCR(file);
-      const { data: { text } } = await Tesseract.recognize(ocrSource, 'eng');
-      const cleaned = text.replace(/\s+$/gm, '').trim();
-      if(cleaned){
-        const ta = document.getElementById('materiaalText');
-        ta.value = ta.value.trim() ? (ta.value.trim() + '\n\n' + cleaned) : cleaned;
-        toast('Tekst herkend — controleer en pas aan indien nodig');
-      } else {
-        toast('Geen tekst herkend in deze foto');
-      }
     } catch(err){
       console.error(err);
-      toast('Verwerken mislukt: ' + (err.message || 'onbekende fout'));
+      toast('Foto verwerken mislukt: ' + (err.message || 'onbekende fout'));
     } finally {
       processingPhotoCount = Math.max(0, processingPhotoCount - 1);
       updateSaveButtonAvailability();
