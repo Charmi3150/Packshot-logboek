@@ -1159,7 +1159,7 @@ async function exportToPDF(){
     doc.setTextColor(255);
     doc.setFont('helvetica','bold');
     doc.setFontSize(7);
-    doc.text(String(it.volgnummer).padStart(3,'0'), margin + badgeW/2, photosTop + photoSize/2, {align:'center', angle:90});
+    doc.text(String(it.volgnummer).padStart(3,'0'), margin + badgeW/2, photosTop + photoSize/2, {align:'center', angle:90, baseline:'middle'});
     doc.setTextColor(20);
 
     let px = photosStartX;
