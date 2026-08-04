@@ -870,13 +870,36 @@ document.getElementById('addBtn').addEventListener('click', ()=>{
   }
   openItemSheet(null);
 });
-document.getElementById('cancelBtn').addEventListener('click', ()=>{
+document.getElementById('cancelBtn').addEventListener('click', async ()=>{
+  const hasContent = labelPhoto || artikelPhoto || materiaalPhotos.some(Boolean) ||
+    document.getElementById('fRef').value.trim() ||
+    document.getElementById('fOmschr').value.trim() ||
+    document.getElementById('fMerk').value.trim() ||
+    document.getElementById('materiaalText').value.trim();
+
+  if(hasContent){
+    const ok = await customConfirm(editingItem ? 'Wijzigingen niet opslaan en sluiten?' : 'Ingevulde gegevens en foto\'s niet opslaan en sluiten?');
+    if(!ok) return;
+  }
+
   editingItem = null;
   document.getElementById('newSheetBackdrop').classList.remove('open');
 });
 
-document.getElementById('labelSlot').addEventListener('click', ()=> document.getElementById('labelInput').click());
-document.getElementById('artikelSlot').addEventListener('click', ()=> document.getElementById('artikelInput').click());
+document.getElementById('labelSlot').addEventListener('click', async ()=>{
+  if(labelPhoto){
+    const ok = await customConfirm('Deze labelfoto vervangen door een nieuwe?');
+    if(!ok) return;
+  }
+  document.getElementById('labelInput').click();
+});
+document.getElementById('artikelSlot').addEventListener('click', async ()=>{
+  if(artikelPhoto){
+    const ok = await customConfirm('Deze artikelfoto vervangen door een nieuwe?');
+    if(!ok) return;
+  }
+  document.getElementById('artikelInput').click();
+});
 
 document.getElementById('labelInput').addEventListener('change', async (e)=>{
   const file = e.target.files[0];
@@ -919,9 +942,11 @@ function wireMaterialSlot(idx){
   const slot = document.getElementById(`materiaalSlot${idx}`);
   const input = document.getElementById(`materiaalInput${idx}`);
 
-  slot.addEventListener('click', (e)=>{
+  slot.addEventListener('click', async (e)=>{
     if(slot.classList.contains('filled')){
       if(e.target.closest('.retake')){
+        const ok = await customConfirm('Deze materiaalfoto vervangen door een nieuwe?');
+        if(!ok) return;
         input.click();
       } else {
         openLightbox(materiaalPhotos[idx]);
