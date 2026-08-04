@@ -12,6 +12,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Archivo:wght@700;800;900&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
 <style>
   :root{
     --paper:#EDEAE3;
@@ -387,7 +388,7 @@
         <div class="mat-slot" id="materiaalSlot0" data-idx="0"><div class="cam-icon">🧵</div></div>
         <div class="mat-slot" id="materiaalSlot1" data-idx="1"><div class="cam-icon">🧵</div></div>
       </div>
-      <textarea id="materiaalText" rows="3" placeholder="Typ hier de samenstelling (optioneel)&#10;bv.&#10;Cotton 95&#10;Elastane 5"></textarea>
+      <textarea id="materiaalText" rows="3" placeholder="Wordt automatisch herkend (kan onnauwkeurig zijn), of typ zelf&#10;bv.&#10;Cotton 95&#10;Elastane 5"></textarea>
       <button type="button" class="copy-btn" id="copyMateriaalBtn">📋 Kopieer</button>
     </div>
     <input type="file" accept="image/*" capture="environment" id="materiaalInput0" style="display:none">
@@ -536,6 +537,40 @@ function compressImage(file, maxDim=1100, quality=0.72){
       const ctx = canvas.getContext('2d');
       ctx.drawImage(img, 0, 0, w, h);
       resolve(canvas.toDataURL('image/jpeg', quality));
+    };
+    img.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+
+/* grijswaarden + wat extra contrast — kan tekstherkenning op een drukke
+   achtergrond (bv. denim) iets helpen, geen garantie */
+function preprocessForOCR(file){
+  return new Promise((resolve, reject)=>{
+    const img = new Image();
+    const reader = new FileReader();
+    reader.onload = e => { img.src = e.target.result; };
+    reader.onerror = reject;
+    img.onload = () => {
+      const maxDim = 1800;
+      let w = img.width, h = img.height;
+      if(w > h && w > maxDim){ h = Math.round(h * maxDim/w); w = maxDim; }
+      else if(h > maxDim){ w = Math.round(w * maxDim/h); h = maxDim; }
+      const canvas = document.createElement('canvas');
+      canvas.width = w; canvas.height = h;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(img, 0, 0, w, h);
+      const imgData = ctx.getImageData(0, 0, w, h);
+      const d = imgData.data;
+      const contrast = 1.35;
+      for(let i = 0; i < d.length; i += 4){
+        const gray = 0.299*d[i] + 0.587*d[i+1] + 0.114*d[i+2];
+        let v = (gray - 128) * contrast + 128;
+        v = Math.max(0, Math.min(255, v));
+        d[i] = d[i+1] = d[i+2] = v;
+      }
+      ctx.putImageData(imgData, 0, 0);
+      resolve(canvas.toDataURL('image/png'));
     };
     img.onerror = reject;
     reader.readAsDataURL(file);
@@ -963,14 +998,28 @@ function wireMaterialSlot(idx){
     updateSaveButtonAvailability();
     toast('Foto verwerken…');
     try{
-      // enkel een leesbare, lichte foto bewaren — geen automatische tekstherkenning
-      // (te onbetrouwbaar bij dichtbedrukte of meertalige labels)
+      // leesbare, lichte foto bewaren
       materiaalPhotos[idx] = await compressImage(file, 900, 0.6);
       slot.innerHTML = `<img src="${materiaalPhotos[idx]}"><div class="retake">opnieuw</div>`;
       slot.classList.add('filled');
+
+      // tekst herkennen — exact overnemen zoals herkend, geen filtering.
+      // Kan onnauwkeurig zijn bij drukke achtergronden of klein lettertype;
+      // corrigeer/wis wat nodig is in het tekstvak hieronder.
+      toast('Tekst herkennen…');
+      const ocrSource = await preprocessForOCR(file);
+      const { data: { text } } = await Tesseract.recognize(ocrSource, 'eng');
+      const cleaned = text.replace(/\s+$/gm, '').trim();
+      if(cleaned){
+        const ta = document.getElementById('materiaalText');
+        ta.value = ta.value.trim() ? (ta.value.trim() + '\n\n' + cleaned) : cleaned;
+        toast('Tekst herkend — controleer en pas aan indien nodig');
+      } else {
+        toast('Geen tekst herkend in deze foto');
+      }
     } catch(err){
       console.error(err);
-      toast('Foto verwerken mislukt: ' + (err.message || 'onbekende fout'));
+      toast('Verwerken mislukt: ' + (err.message || 'onbekende fout'));
     } finally {
       processingPhotoCount = Math.max(0, processingPhotoCount - 1);
       updateSaveButtonAvailability();
@@ -1121,42 +1170,42 @@ async function exportToPDF(){
     ];
     matPhotosArr.forEach((p, i) => photoSlots.push({ src: p, label: matPhotosArr.length > 1 ? `MATERIAAL ${i+1}` : 'MATERIAAL' }));
 
-    const gap = 4;
-    let photoSize = Math.min(55, (usableW - (photoSlots.length - 1) * gap) / photoSlots.length);
+    const gap = 3;
+    let photoSize = Math.min(26, (usableW - (photoSlots.length - 1) * gap) / photoSlots.length);
     const rowStartX = margin; // links uitgelijnd
 
-    const matTextLines = matLine ? doc.splitTextToSize(matLine, usableW).slice(0, 6) : [];
+    const matTextLines = matLine ? doc.splitTextToSize(matLine, usableW).slice(0, 3) : [];
 
     // omschrijving + merk komen op dezelfde regel als het volgnummer
-    const badgeW = 15, badgeH = 6, badgeGap = 3;
+    const badgeW = 13, badgeH = 5, badgeGap = 3;
     const topTextX = margin + badgeW + badgeGap;
     const topTextW = usableW - badgeW - badgeGap;
     let topLabel = it.omschrijving || '';
     if(it.merk) topLabel = topLabel ? `${topLabel} — ${it.merk.toUpperCase()}` : it.merk.toUpperCase();
-    const topLines = topLabel ? doc.splitTextToSize(topLabel, topTextW).slice(0, 2) : [];
-    const topBlockH = Math.max(badgeH, topLines.length * 4.2);
+    const topLines = topLabel ? doc.splitTextToSize(topLabel, topTextW).slice(0, 1) : [];
+    const topBlockH = Math.max(badgeH, topLines.length * 3.8);
 
-    const photosBlockH = photoSize + 5;
-    const matTextBlockH = matTextLines.length ? (matTextLines.length * 3.4 + 5) : 0;
+    const photosBlockH = photoSize + 3.5;
+    const matTextBlockH = matTextLines.length ? (matTextLines.length * 2.9 + 2.5) : 0;
 
-    ensureSpace(topBlockH + 3 + photosBlockH + matTextBlockH + 6);
+    ensureSpace(topBlockH + 2 + photosBlockH + matTextBlockH + 4);
     const itemTop = y;
 
     // klein, subtiel volgnummer-label
     doc.setFillColor(60,58,55);
-    doc.roundedRect(margin, itemTop, badgeW, badgeH, 1.2, 1.2, 'F');
+    doc.roundedRect(margin, itemTop, badgeW, badgeH, 1, 1, 'F');
     doc.setTextColor(255);
     doc.setFont('helvetica','bold');
-    doc.setFontSize(7.5);
-    doc.text(`NR. ${String(it.volgnummer).padStart(3,'0')}`, margin + badgeW/2, itemTop + 4.1, {align:'center'});
+    doc.setFontSize(6.5);
+    doc.text(`NR. ${String(it.volgnummer).padStart(3,'0')}`, margin + badgeW/2, itemTop + 3.5, {align:'center'});
     doc.setTextColor(20);
 
     if(topLines.length){
-      doc.setFont('helvetica','normal'); doc.setFontSize(9);
-      doc.text(topLines, topTextX, itemTop + 4.1);
+      doc.setFont('helvetica','normal'); doc.setFontSize(8);
+      doc.text(topLines, topTextX, itemTop + 3.7);
     }
 
-    const photosTop = itemTop + topBlockH + 3;
+    const photosTop = itemTop + topBlockH + 2;
     let px = rowStartX;
     photoSlots.forEach(slot => {
       try{
@@ -1166,26 +1215,26 @@ async function exportToPDF(){
           doc.setDrawColor(210); doc.rect(px, photosTop, photoSize, photoSize);
         }
       }catch(e){ doc.setDrawColor(210); doc.rect(px, photosTop, photoSize, photoSize); }
-      doc.setFont('helvetica','normal'); doc.setFontSize(6); doc.setTextColor(140);
-      doc.text(slot.label, px + photoSize/2, photosTop + photoSize + 3.5, {align:'center'});
+      doc.setFont('helvetica','normal'); doc.setFontSize(5.5); doc.setTextColor(140);
+      doc.text(slot.label, px + photoSize/2, photosTop + photoSize + 3, {align:'center'});
       doc.setTextColor(20);
       px += photoSize + gap;
     });
 
-    let ty = photosTop + photoSize + 8;
+    let ty = photosTop + photoSize + 5.5;
 
     if(matTextLines.length){
-      doc.setFont('helvetica','normal'); doc.setFontSize(7);
+      doc.setFont('helvetica','normal'); doc.setFontSize(6.5);
       doc.setTextColor(90);
       doc.text(matTextLines, margin, ty);
       doc.setTextColor(20);
-      ty += matTextLines.length * 3.4;
+      ty += matTextLines.length * 2.9;
     }
 
-    y = ty + 4;
+    y = ty + 2.5;
     doc.setDrawColor(230);
-    doc.line(margin, y-2, pageW-margin, y-2);
-    y += 2;
+    doc.line(margin, y-1.5, pageW-margin, y-1.5);
+    y += 1.5;
   }
 
   doc.save(`packshot-${currentSession.replace(/[^a-z0-9]/gi,'_')}.pdf`);
