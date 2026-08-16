@@ -61,6 +61,49 @@
     font-family:'Archivo', sans-serif; font-weight:900;
     font-size:22px; letter-spacing:-0.01em; margin:0 0 14px;
   }
+  .app-tabs{
+    display:flex; gap:8px; margin-bottom:14px;
+  }
+  .app-tab{
+    flex:1; background:var(--card); border:1px solid var(--line); border-radius:11px;
+    padding:9px; font-family:'Inter',sans-serif; font-weight:700; font-size:13px;
+    color:var(--ink-soft); cursor:pointer;
+  }
+  .app-tab.active{
+    background:var(--ink); border-color:var(--ink); color:var(--paper);
+  }
+  .time-select-row{display:flex; align-items:center; gap:6px;}
+  .time-select-row select{
+    flex:1; border:1px solid var(--line); border-radius:9px; padding:12px 8px;
+    font-size:16px; font-family:'JetBrains Mono',monospace; background:var(--card); color:var(--ink);
+  }
+  .time-colon{font-weight:700; color:var(--ink-faint);}
+  .worklog-summary{
+    background:var(--card); border:1px solid var(--line); border-radius:14px;
+    padding:16px; margin-bottom:16px; display:flex; justify-content:space-between; align-items:baseline;
+  }
+  .worklog-summary .total-label{
+    font-family:'JetBrains Mono',monospace; font-size:11px; text-transform:uppercase;
+    letter-spacing:.06em; color:var(--ink-faint);
+  }
+  .worklog-summary .total-value{
+    font-family:'Archivo',sans-serif; font-weight:900; font-size:22px; color:var(--ink);
+  }
+  .worklog-item{
+    background:var(--card); border:1px solid var(--line); border-radius:12px;
+    padding:13px 14px; margin-bottom:10px; display:flex; align-items:center; gap:10px;
+  }
+  .worklog-item .wl-date{
+    font-family:'Archivo',sans-serif; font-weight:800; font-size:14px; color:var(--ink);
+    min-width:80px;
+  }
+  .worklog-item .wl-range{
+    font-family:'JetBrains Mono',monospace; font-size:13px; color:var(--ink-soft); flex:1;
+  }
+  .worklog-item .wl-duration{
+    font-family:'JetBrains Mono',monospace; font-weight:700; font-size:12px;
+    background:var(--tag-soft); padding:3px 8px; border-radius:6px; color:var(--ink);
+  }
   .session-tabs{
     display:flex; gap:8px; overflow-x:auto; -webkit-overflow-scrolling:touch;
     padding:2px 2px 10px; margin:0 -2px 4px;
@@ -341,21 +384,34 @@
   <div class="eyebrow">Packshot volgorde</div>
   <h1>PACKSHOTS</h1>
 
-  <div class="session-tabs" id="sessionTabs"></div>
-
-  <div class="session-row">
-    <span id="sessionName" style="display:none;"></span>
-    <button class="session-btn" id="switchSessionBtn" style="margin-left:auto;">+ Nieuwe sessie</button>
+  <div class="app-tabs">
+    <button class="app-tab active" id="tabPackshots">📦 Packshots</button>
+    <button class="app-tab" id="tabWorklog">🕐 Bewerktijd</button>
   </div>
-  <button class="export-btn" id="exportPdfBtn" style="margin-top:10px; width:100%; justify-content:center;">⬇ Exporteer PDF (met foto's)</button>
+
+  <div id="packshotsHeaderPart">
+    <div class="session-tabs" id="sessionTabs"></div>
+
+    <div class="session-row">
+      <span id="sessionName" style="display:none;"></span>
+      <button class="session-btn" id="switchSessionBtn" style="margin-left:auto;">+ Nieuwe sessie</button>
+    </div>
+    <button class="export-btn" id="exportPdfBtn" style="margin-top:10px; width:100%; justify-content:center;">⬇ Exporteer PDF (met foto's)</button>
+  </div>
 </header>
 
-<main>
+<main id="packshotsView">
   <div class="count-row"><span id="itemCount">0 artikelen</span><span id="syncState"></span></div>
   <div id="list"></div>
 </main>
 
+<main id="worklogView" style="display:none;">
+  <div class="worklog-summary" id="worklogSummary"></div>
+  <div id="worklogList"></div>
+</main>
+
 <button class="fab" id="addBtn"><span class="plus">+</span> Nieuw artikel</button>
+<button class="fab" id="addWorklogBtn" style="display:none;"><span class="plus">+</span> Nieuwe invoer</button>
 
 <!-- New item sheet -->
 <div class="sheet-backdrop" id="newSheetBackdrop">
@@ -425,6 +481,41 @@
   </div>
 </div>
 
+<!-- Worklog entry sheet -->
+<div class="sheet-backdrop" id="worklogSheetBackdrop">
+  <div class="sheet">
+    <div class="sheet-handle"></div>
+    <h2 id="worklogSheetTitle">Nieuwe invoer</h2>
+    <div class="sub">Wanneer heb je bewerkt in Photoshop?</div>
+
+    <div class="field">
+      <label>Datum</label>
+      <input type="date" id="wDatum">
+    </div>
+
+    <div class="field">
+      <label>Van</label>
+      <div class="time-select-row">
+        <select id="wVanUur"></select>
+        <span class="time-colon">:</span>
+        <select id="wVanMin"></select>
+      </div>
+    </div>
+
+    <div class="field">
+      <label>Tot</label>
+      <div class="time-select-row">
+        <select id="wTotUur"></select>
+        <span class="time-colon">:</span>
+        <select id="wTotMin"></select>
+      </div>
+    </div>
+
+    <button class="save-btn" id="saveWorklogBtn">Opslaan</button>
+    <button class="cancel-btn" id="cancelWorklogBtn">Annuleren</button>
+  </div>
+</div>
+
 <div class="confirm-backdrop" id="confirmBackdrop">
   <div class="confirm-box">
     <p id="confirmText">Weet je het zeker?</p>
@@ -450,11 +541,14 @@ const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
 
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 const TABLE = "packshot_items";
+const WORKLOG_TABLE = "packshot_worklog";
 
 let currentSession = localStorage.getItem('packshot_session') || null;
 let items = [];
 let labelPhoto = null, artikelPhoto = null, materiaalPhotos = [null, null];
 let pendingDeleteId = null;
+let worklogEntries = [];
+let editingWorklog = null;
 let processingPhotoCount = 0;
 let isSaving = false;
 
@@ -1238,6 +1332,9 @@ function subscribeRealtime(){
     .channel('packshot-items-sync')
     .on('postgres_changes', { event: '*', schema: 'public', table: TABLE }, handleRealtimeChange)
     .on('postgres_changes', { event: '*', schema: 'public', table: 'packshot_sessions' }, ()=> renderSessionTabs())
+    .on('postgres_changes', { event: '*', schema: 'public', table: WORKLOG_TABLE }, ()=>{
+      if(document.getElementById('worklogView').style.display !== 'none') loadWorklog();
+    })
     .subscribe();
 }
 
@@ -1269,6 +1366,156 @@ function handleRealtimeChange(payload){
     }
   }
 }
+
+/* ---------- Bewerktijd (Photoshop-log), volledig los van sessies/artikelen ---------- */
+
+function populateTimeSelects(){
+  const uurSelects = ['wVanUur', 'wTotUur'];
+  const minSelects = ['wVanMin', 'wTotMin'];
+  uurSelects.forEach(id => {
+    const sel = document.getElementById(id);
+    sel.innerHTML = Array.from({length:24}, (_,h) => `<option value="${String(h).padStart(2,'0')}">${String(h).padStart(2,'0')}</option>`).join('');
+  });
+  minSelects.forEach(id => {
+    const sel = document.getElementById(id);
+    sel.innerHTML = ['00','15','30','45'].map(m => `<option value="${m}">${m}</option>`).join('');
+  });
+}
+populateTimeSelects();
+
+function switchAppTab(tab){
+  const isPackshots = tab === 'packshots';
+  document.getElementById('tabPackshots').classList.toggle('active', isPackshots);
+  document.getElementById('tabWorklog').classList.toggle('active', !isPackshots);
+  document.getElementById('packshotsHeaderPart').style.display = isPackshots ? '' : 'none';
+  document.getElementById('packshotsView').style.display = isPackshots ? '' : 'none';
+  document.getElementById('worklogView').style.display = isPackshots ? 'none' : '';
+  document.getElementById('addBtn').style.display = isPackshots ? '' : 'none';
+  document.getElementById('exportPdfBtn').style.display = isPackshots ? '' : 'none';
+  document.getElementById('addWorklogBtn').style.display = isPackshots ? 'none' : '';
+  if(!isPackshots) loadWorklog();
+}
+document.getElementById('tabPackshots').addEventListener('click', ()=> switchAppTab('packshots'));
+document.getElementById('tabWorklog').addEventListener('click', ()=> switchAppTab('worklog'));
+
+async function loadWorklog(){
+  const { data, error } = await sb.from(WORKLOG_TABLE).select('*').order('datum', {ascending:false}).order('van', {ascending:false});
+  if(error){ console.error(error); toast('Laden mislukt: ' + (error.message || JSON.stringify(error))); return; }
+  worklogEntries = data || [];
+  renderWorklog();
+}
+
+function minutesBetween(van, tot){
+  const [vh,vm] = van.split(':').map(Number);
+  const [th,tm] = tot.split(':').map(Number);
+  let diff = (th*60+tm) - (vh*60+vm);
+  if(diff < 0) diff += 24*60; // over middernacht heen
+  return diff;
+}
+
+function formatDuration(mins){
+  const h = Math.floor(mins/60), m = mins%60;
+  if(h === 0) return `${m}min`;
+  if(m === 0) return `${h}u`;
+  return `${h}u ${m}min`;
+}
+
+function renderWorklog(){
+  const totalMins = worklogEntries.reduce((sum, e) => sum + minutesBetween(e.van, e.tot), 0);
+  document.getElementById('worklogSummary').innerHTML = `
+    <div>
+      <div class="total-label">Totaal bewerktijd</div>
+      <div class="total-value">${formatDuration(totalMins)}</div>
+    </div>
+    <div class="total-label">${worklogEntries.length} invoer${worklogEntries.length===1?'':'en'}</div>
+  `;
+
+  const list = document.getElementById('worklogList');
+  if(worklogEntries.length === 0){
+    list.innerHTML = `<div class="empty"><div class="stamp">＋</div><p>Nog geen bewerktijd geregistreerd. Tik op "Nieuwe invoer" om te beginnen.</p></div>`;
+    return;
+  }
+  list.innerHTML = worklogEntries.map(e => `
+    <div class="worklog-item">
+      <span class="wl-date">${new Date(e.datum).toLocaleDateString('nl-BE', {day:'2-digit', month:'2-digit', year:'numeric'})}</span>
+      <span class="wl-range">${e.van} – ${e.tot}</span>
+      <span class="wl-duration">${formatDuration(minutesBetween(e.van, e.tot))}</span>
+      <button class="icon-btn" data-wl-edit="${e.id}">✏️</button>
+      <button class="icon-btn" data-wl-del="${e.id}">🗑️</button>
+    </div>
+  `).join('');
+
+  list.querySelectorAll('[data-wl-edit]').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      const entry = worklogEntries.find(e => e.id === btn.dataset.wlEdit);
+      if(entry) openWorklogSheet(entry);
+    });
+  });
+  list.querySelectorAll('[data-wl-del]').forEach(btn=>{
+    btn.addEventListener('click', async ()=>{
+      const ok = await customConfirm('Deze invoer verwijderen?');
+      if(!ok) return;
+      const { error } = await sb.from(WORKLOG_TABLE).delete().eq('id', btn.dataset.wlDel);
+      if(error){ toast('Verwijderen mislukt: ' + (error.message || JSON.stringify(error))); return; }
+      worklogEntries = worklogEntries.filter(e => e.id !== btn.dataset.wlDel);
+      renderWorklog();
+      toast('Verwijderd');
+    });
+  });
+}
+
+function openWorklogSheet(entry){
+  editingWorklog = entry || null;
+  document.getElementById('worklogSheetTitle').textContent = entry ? 'Invoer bewerken' : 'Nieuwe invoer';
+  document.getElementById('wDatum').value = entry ? entry.datum : new Date().toISOString().slice(0,10);
+  document.getElementById('wVanUur').value = entry ? entry.van.split(':')[0] : String(new Date().getHours()).padStart(2,'0');
+  document.getElementById('wVanMin').value = entry ? (['00','15','30','45'].includes(entry.van.split(':')[1]) ? entry.van.split(':')[1] : '00') : '00';
+  document.getElementById('wTotUur').value = entry ? entry.tot.split(':')[0] : String(new Date().getHours()).padStart(2,'0');
+  document.getElementById('wTotMin').value = entry ? (['00','15','30','45'].includes(entry.tot.split(':')[1]) ? entry.tot.split(':')[1] : '00') : '00';
+  document.getElementById('saveWorklogBtn').textContent = entry ? 'Wijzigingen opslaan' : 'Opslaan';
+  document.getElementById('worklogSheetBackdrop').classList.add('open');
+}
+
+document.getElementById('addWorklogBtn').addEventListener('click', ()=> openWorklogSheet(null));
+document.getElementById('cancelWorklogBtn').addEventListener('click', ()=>{
+  editingWorklog = null;
+  document.getElementById('worklogSheetBackdrop').classList.remove('open');
+});
+
+document.getElementById('saveWorklogBtn').addEventListener('click', async ()=>{
+  const datum = document.getElementById('wDatum').value;
+  const van = `${document.getElementById('wVanUur').value}:${document.getElementById('wVanMin').value}`;
+  const tot = `${document.getElementById('wTotUur').value}:${document.getElementById('wTotMin').value}`;
+
+  if(!datum){ toast('Kies een datum'); return; }
+
+  const btn = document.getElementById('saveWorklogBtn');
+  btn.disabled = true; btn.style.pointerEvents = 'none';
+
+  if(editingWorklog){
+    const { data, error } = await sb.from(WORKLOG_TABLE).update({ datum, van, tot }).eq('id', editingWorklog.id).select();
+    btn.disabled = false; btn.style.pointerEvents = '';
+    if(error){ console.error(error); toast('Opslaan mislukt: ' + (error.message || JSON.stringify(error))); return; }
+    worklogEntries = worklogEntries.map(e => e.id === editingWorklog.id ? data[0] : e);
+    editingWorklog = null;
+  } else {
+    const { data, error } = await sb.from(WORKLOG_TABLE).insert({ datum, van, tot }).select();
+    btn.disabled = false; btn.style.pointerEvents = '';
+    if(error){ console.error(error); toast('Opslaan mislukt: ' + (error.message || JSON.stringify(error))); return; }
+    worklogEntries.push(data[0]);
+  }
+
+  worklogEntries.sort((a,b) => (b.datum+b.van).localeCompare(a.datum+a.van));
+  renderWorklog();
+  document.getElementById('worklogSheetBackdrop').classList.remove('open');
+  toast('Opgeslagen');
+});
+
+[['worklogSheetBackdrop']].forEach(([id])=>{
+  document.getElementById(id).addEventListener('click', (e)=>{
+    if(e.target.id === id) document.getElementById(id).classList.remove('open');
+  });
+});
 
 /* ---------- init ---------- */
 document.getElementById('sessionName').textContent = displaySessionName(currentSession);
