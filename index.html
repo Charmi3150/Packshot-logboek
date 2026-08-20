@@ -948,6 +948,11 @@ function openItemSheet(item){
   document.getElementById('saveBtn').textContent = item ? 'Wijzigingen opslaan' : 'Opslaan & volgende';
 
   document.getElementById('newSheetBackdrop').classList.add('open');
+
+  // bij een nieuw artikel: meteen automatisch de labelcamera openen
+  if(!item){
+    setTimeout(()=> document.getElementById('labelInput').click(), 300);
+  }
 }
 
 document.getElementById('addBtn').addEventListener('click', ()=>{
@@ -1007,6 +1012,10 @@ document.getElementById('labelInput').addEventListener('change', async (e)=>{
     updateSaveButtonAvailability();
     e.target.value = '';
   }
+  // automatisch doorschakelen naar de artikelfoto, enkel bij een nieuw artikel
+  if(!editingItem && !artikelPhoto){
+    setTimeout(()=> document.getElementById('artikelInput').click(), 200);
+  }
 });
 
 
@@ -1025,6 +1034,10 @@ document.getElementById('artikelInput').addEventListener('change', async (e)=>{
     processingPhotoCount = Math.max(0, processingPhotoCount - 1);
     updateSaveButtonAvailability();
     e.target.value = '';
+  }
+  // automatisch doorschakelen naar de eerste materiaalfoto, enkel bij een nieuw artikel
+  if(!editingItem && !materiaalPhotos[0]){
+    setTimeout(()=> document.getElementById('materiaalInput0').click(), 200);
   }
 });
 
