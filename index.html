@@ -1215,6 +1215,27 @@ function drawContainedImage(doc, src, x, y, boxSize){
   doc.addImage(src, 'JPEG', offsetX, offsetY, drawW, drawH);
 }
 
+/* vult het volledige vak (snijdt overtollige rand weg i.p.v. wit over te laten),
+   zonder de foto zelf te vervormen — zo staan foto's met een andere verhouding
+   (bv. een smal, rechtopstaand label) niet met veel witruimte ertussen */
+function drawCoverImage(doc, src, x, y, boxSize){
+  let iw = boxSize, ih = boxSize;
+  try{
+    const props = doc.getImageProperties(src);
+    iw = props.width; ih = props.height;
+  }catch(e){ /* val terug op vierkant als eigenschappen niet te lezen zijn */ }
+  const scale = Math.max(boxSize / iw, boxSize / ih);
+  const drawW = iw * scale, drawH = ih * scale;
+  const offsetX = x + (boxSize - drawW) / 2;
+  const offsetY = y + (boxSize - drawH) / 2;
+  doc.saveGraphicsState();
+  doc.rect(x, y, boxSize, boxSize, null);
+  doc.clip();
+  doc.discardPath();
+  doc.addImage(src, 'JPEG', offsetX, offsetY, drawW, drawH);
+  doc.restoreGraphicsState();
+}
+
 async function exportToPDF(){
   if(items.length === 0){ toast('Geen artikelen om te exporteren'); return; }
   toast('PDF wordt gemaakt…');
@@ -1298,7 +1319,7 @@ async function exportToPDF(){
     photoSlots.forEach(slot => {
       try{
         if(slot.src){
-          drawContainedImage(doc, slot.src, px, photosTop, photoSize);
+          drawCoverImage(doc, slot.src, px, photosTop, photoSize);
         } else {
           doc.setDrawColor(210); doc.rect(px, photosTop, photoSize, photoSize);
         }
