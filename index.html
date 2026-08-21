@@ -1246,7 +1246,7 @@ async function exportToPDF(){
   }
 
   const sorted = [...items].sort((a,b) => a.volgnummer - b.volgnummer);
-  const badgeW = 8, gap = 3;
+  const badgeW = 8, gap = 1;
 
   for(const it of sorted){
     const matPhotosArr = parseMaterialPhotos(it.foto_materiaal).filter(Boolean);
