@@ -91,8 +91,9 @@
   }
   .worklog-item{
     background:var(--card); border:1px solid var(--line); border-radius:12px;
-    padding:13px 14px; margin-bottom:10px; display:flex; align-items:center; gap:10px;
+    padding:13px 14px; margin-bottom:10px;
   }
+  .worklog-item .wl-row{display:flex; align-items:center; gap:10px;}
   .worklog-item .wl-date{
     font-family:'Archivo',sans-serif; font-weight:800; font-size:14px; color:var(--ink);
     min-width:80px;
@@ -103,6 +104,10 @@
   .worklog-item .wl-duration{
     font-family:'JetBrains Mono',monospace; font-weight:700; font-size:12px;
     background:var(--tag-soft); padding:3px 8px; border-radius:6px; color:var(--ink);
+  }
+  .worklog-item .wl-reden{
+    margin-top:8px; padding-top:8px; border-top:1px dashed var(--line);
+    font-size:13px; color:var(--ink-soft);
   }
   .session-tabs{
     display:flex; gap:8px; overflow-x:auto; -webkit-overflow-scrolling:touch;
@@ -511,6 +516,11 @@
         <span class="time-colon">:</span>
         <select id="wTotMin"></select>
       </div>
+    </div>
+
+    <div class="field">
+      <label>Reden / info (optioneel)</label>
+      <input type="text" id="wReden" placeholder="bv. Najaarscollectie bewerkt" autocomplete="off">
     </div>
 
     <button class="save-btn" id="saveWorklogBtn">Opslaan</button>
@@ -1496,11 +1506,14 @@ function renderWorklog(){
   }
   list.innerHTML = worklogEntries.map(e => `
     <div class="worklog-item">
-      <span class="wl-date">${new Date(e.datum).toLocaleDateString('nl-BE', {day:'2-digit', month:'2-digit', year:'numeric'})}</span>
-      <span class="wl-range">${e.van} – ${e.tot}</span>
-      <span class="wl-duration">${formatDuration(minutesBetween(e.van, e.tot))}</span>
-      <button class="icon-btn" data-wl-edit="${e.id}">✏️</button>
-      <button class="icon-btn" data-wl-del="${e.id}">🗑️</button>
+      <div class="wl-row">
+        <span class="wl-date">${new Date(e.datum).toLocaleDateString('nl-BE', {day:'2-digit', month:'2-digit', year:'numeric'})}</span>
+        <span class="wl-range">${e.van} – ${e.tot}</span>
+        <span class="wl-duration">${formatDuration(minutesBetween(e.van, e.tot))}</span>
+        <button class="icon-btn" data-wl-edit="${e.id}">✏️</button>
+        <button class="icon-btn" data-wl-del="${e.id}">🗑️</button>
+      </div>
+      ${e.reden ? `<div class="wl-reden">${escapeHtml(e.reden)}</div>` : ''}
     </div>
   `).join('');
 
@@ -1531,6 +1544,7 @@ function openWorklogSheet(entry){
   document.getElementById('wVanMin').value = entry ? (['00','15','30','45'].includes(entry.van.split(':')[1]) ? entry.van.split(':')[1] : '00') : '00';
   document.getElementById('wTotUur').value = entry ? entry.tot.split(':')[0] : String(new Date().getHours()).padStart(2,'0');
   document.getElementById('wTotMin').value = entry ? (['00','15','30','45'].includes(entry.tot.split(':')[1]) ? entry.tot.split(':')[1] : '00') : '00';
+  document.getElementById('wReden').value = entry ? (entry.reden || '') : '';
   document.getElementById('saveWorklogBtn').textContent = entry ? 'Wijzigingen opslaan' : 'Opslaan';
   document.getElementById('worklogSheetBackdrop').classList.add('open');
 }
@@ -1545,6 +1559,7 @@ document.getElementById('saveWorklogBtn').addEventListener('click', async ()=>{
   const datum = document.getElementById('wDatum').value;
   const van = `${document.getElementById('wVanUur').value}:${document.getElementById('wVanMin').value}`;
   const tot = `${document.getElementById('wTotUur').value}:${document.getElementById('wTotMin').value}`;
+  const reden = document.getElementById('wReden').value.trim();
 
   if(!datum){ toast('Kies een datum'); return; }
 
@@ -1552,13 +1567,13 @@ document.getElementById('saveWorklogBtn').addEventListener('click', async ()=>{
   btn.disabled = true; btn.style.pointerEvents = 'none';
 
   if(editingWorklog){
-    const { data, error } = await sb.from(WORKLOG_TABLE).update({ datum, van, tot }).eq('id', editingWorklog.id).select();
+    const { data, error } = await sb.from(WORKLOG_TABLE).update({ datum, van, tot, reden }).eq('id', editingWorklog.id).select();
     btn.disabled = false; btn.style.pointerEvents = '';
     if(error){ console.error(error); toast('Opslaan mislukt: ' + (error.message || JSON.stringify(error))); return; }
     worklogEntries = worklogEntries.map(e => e.id === editingWorklog.id ? data[0] : e);
     editingWorklog = null;
   } else {
-    const { data, error } = await sb.from(WORKLOG_TABLE).insert({ datum, van, tot }).select();
+    const { data, error } = await sb.from(WORKLOG_TABLE).insert({ datum, van, tot, reden }).select();
     btn.disabled = false; btn.style.pointerEvents = '';
     if(error){ console.error(error); toast('Opslaan mislukt: ' + (error.message || JSON.stringify(error))); return; }
     worklogEntries.push(data[0]);
