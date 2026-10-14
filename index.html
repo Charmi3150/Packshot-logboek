@@ -1596,5 +1596,134 @@ document.getElementById('sessionName').textContent = displaySessionName(currentS
 loadItems();
 subscribeRealtime();
 </script>
+
+<!-- ---------- In-app camera ----------
+     De native iOS-camera (via <input capture>) neemt de audiosessie over,
+     waardoor Spotify e.d. pauzeren. Deze camera gebruikt getUserMedia met
+     ENKEL video (geen microfoon), zodat muziek gewoon blijft spelen.
+     Bestaande file-inputs blijven werken: de foto wordt erin gezet en het
+     gewone 'change'-event wordt afgevuurd. -->
+<style>
+  #camOverlay{
+    position:fixed; inset:0; z-index:100; background:#000; display:none;
+    flex-direction:column;
+  }
+  #camOverlay.open{ display:flex; }
+  #camVideo{ flex:1; width:100%; min-height:0; object-fit:cover; background:#000; }
+  #camBar{
+    display:flex; align-items:center; justify-content:space-between;
+    padding:18px 28px calc(22px + var(--safe-bottom)); background:#000;
+  }
+  #camBar .cam-side{
+    width:64px; background:none; border:0; color:#fff; font-size:15px;
+    font-weight:600; cursor:pointer; padding:8px 0;
+  }
+  #camShutter{
+    width:72px; height:72px; border-radius:50%; background:#fff;
+    border:5px solid rgba(255,255,255,.35); background-clip:padding-box;
+    cursor:pointer; transition:transform .1s ease;
+  }
+  #camShutter:active{ transform:scale(.92); }
+  #camFlash{ position:absolute; inset:0; background:#fff; opacity:0; pointer-events:none; transition:opacity .15s ease; }
+  #camFlash.on{ opacity:.7; transition:none; }
+</style>
+<div id="camOverlay">
+  <video id="camVideo" playsinline muted autoplay></video>
+  <div id="camFlash"></div>
+  <div id="camBar">
+    <button type="button" class="cam-side" id="camCancel">Annuleer</button>
+    <button type="button" id="camShutter" aria-label="Foto nemen"></button>
+    <button type="button" class="cam-side" id="camLibrary">Album</button>
+  </div>
+</div>
+<script>
+(function(){
+  const overlay = document.getElementById('camOverlay');
+  const video = document.getElementById('camVideo');
+  const flash = document.getElementById('camFlash');
+  const nativeClick = HTMLInputElement.prototype.click;
+  let stream = null, targetInput = null, busy = false;
+
+  const supported = !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia && window.DataTransfer);
+
+  function stopStream(){
+    if(stream){ stream.getTracks().forEach(t => t.stop()); stream = null; }
+    video.srcObject = null;
+  }
+  function closeCam(){
+    overlay.classList.remove('open');
+    stopStream();
+    targetInput = null;
+  }
+
+  async function openCam(input){
+    targetInput = input;
+    overlay.classList.add('open');
+    try{
+      stream = await navigator.mediaDevices.getUserMedia({
+        audio: false, // geen microfoon → muziek blijft spelen
+        video: { facingMode: { ideal: 'environment' }, width: { ideal: 2560 }, height: { ideal: 1920 } }
+      });
+      video.srcObject = stream;
+      await video.play().catch(()=>{});
+    } catch(err){
+      console.warn('In-app camera niet beschikbaar, val terug op native camera', err);
+      overlay.classList.remove('open');
+      stopStream();
+      targetInput = null;
+      nativeClick.call(input); // terugval (kan muziek wel pauzeren)
+    }
+  }
+
+  function deliver(input, file){
+    const dt = new DataTransfer();
+    dt.items.add(file);
+    input.files = dt.files;
+    input.dispatchEvent(new Event('change', { bubbles: true }));
+  }
+
+  document.getElementById('camShutter').addEventListener('click', ()=>{
+    if(busy || !stream || !targetInput || !video.videoWidth) return;
+    busy = true;
+    flash.classList.add('on');
+    requestAnimationFrame(()=> requestAnimationFrame(()=> flash.classList.remove('on')));
+    const canvas = document.createElement('canvas');
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    canvas.getContext('2d').drawImage(video, 0, 0);
+    const input = targetInput;
+    canvas.toBlob(blob => {
+      busy = false;
+      closeCam();
+      if(!blob) return;
+      deliver(input, new File([blob], `foto_${Date.now()}.jpg`, { type: 'image/jpeg' }));
+    }, 'image/jpeg', 0.92);
+  });
+
+  document.getElementById('camCancel').addEventListener('click', closeCam);
+
+  // foto kiezen uit album: tijdelijk zonder capture-attribuut openen
+  document.getElementById('camLibrary').addEventListener('click', ()=>{
+    const input = targetInput;
+    closeCam();
+    if(!input) return;
+    const cap = input.getAttribute('capture');
+    input.removeAttribute('capture');
+    nativeClick.call(input);
+    setTimeout(()=> { if(cap !== null) input.setAttribute('capture', cap); }, 1000);
+  });
+
+  // alle camera-inputs (capture="environment") via de in-app camera laten lopen
+  if(supported){
+    HTMLInputElement.prototype.click = function(){
+      if(this.type === 'file' && this.hasAttribute('capture')){
+        openCam(this);
+      } else {
+        nativeClick.call(this);
+      }
+    };
+  }
+})();
+</script>
 </body>
 </html>
