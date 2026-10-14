@@ -1597,82 +1597,138 @@ loadItems();
 subscribeRealtime();
 </script>
 
-<!-- ---------- In-app camera ----------
+<!-- ---------- In-app fotocamera ----------
      De native iOS-camera (via <input capture>) neemt de audiosessie over,
      waardoor Spotify e.d. pauzeren. Deze camera gebruikt getUserMedia met
-     ENKEL video (geen microfoon), zodat muziek gewoon blijft spelen.
-     Bestaande file-inputs blijven werken: de foto wordt erin gezet en het
-     gewone 'change'-event wordt afgevuurd. -->
+     ENKEL beeld (geen microfoon) en zet de audiosessie van de pagina op
+     'ambient', zodat muziek van andere apps gewoon blijft spelen.
+     Werkt als een fototoestel: richten → afdrukken → foto bekijken →
+     "Gebruik foto" of "Opnieuw". Er wordt nooit gefilmd of opgenomen. -->
 <style>
   #camOverlay{
     position:fixed; inset:0; z-index:100; background:#000; display:none;
-    flex-direction:column;
+    flex-direction:column; color:#fff;
   }
   #camOverlay.open{ display:flex; }
-  #camVideo{ flex:1; width:100%; min-height:0; object-fit:cover; background:#000; }
-  #camBar{
+  #camStage{ position:relative; flex:1; min-height:0; overflow:hidden; }
+  #camVideo, #camPreview{
+    position:absolute; inset:0; width:100%; height:100%; object-fit:contain; background:#000;
+  }
+  #camPreview{ display:none; }
+  #camOverlay.review #camPreview{ display:block; }
+  #camOverlay.review #camVideo{ visibility:hidden; }
+  #camMode{
+    position:absolute; top:calc(14px + env(safe-area-inset-top, 0px)); left:50%; transform:translateX(-50%);
+    background:rgba(0,0,0,.55); padding:5px 14px; border-radius:20px;
+    font:700 12px/1 'JetBrains Mono',monospace; letter-spacing:.12em; color:#FFD60A;
+  }
+  #camFlash{ position:absolute; inset:0; background:#fff; opacity:0; pointer-events:none; transition:opacity .2s ease; }
+  #camFlash.on{ opacity:.8; transition:none; }
+  .cam-bar{
     display:flex; align-items:center; justify-content:space-between;
-    padding:18px 28px calc(22px + var(--safe-bottom)); background:#000;
+    padding:18px 24px calc(22px + var(--safe-bottom)); background:#000; min-height:112px;
   }
-  #camBar .cam-side{
-    width:64px; background:none; border:0; color:#fff; font-size:15px;
-    font-weight:600; cursor:pointer; padding:8px 0;
+  .cam-bar .cam-side{
+    min-width:72px; background:none; border:0; color:#fff; font-size:16px;
+    font-weight:600; cursor:pointer; padding:10px 0;
   }
+  .cam-bar .cam-side.right{ text-align:right; }
+  .cam-bar .cam-use{ color:#FFD60A; }
   #camShutter{
     width:72px; height:72px; border-radius:50%; background:#fff;
-    border:5px solid rgba(255,255,255,.35); background-clip:padding-box;
-    cursor:pointer; transition:transform .1s ease;
+    box-shadow:0 0 0 4px #000, 0 0 0 7px #fff; border:0; cursor:pointer;
+    transition:transform .1s ease;
   }
-  #camShutter:active{ transform:scale(.92); }
-  #camFlash{ position:absolute; inset:0; background:#fff; opacity:0; pointer-events:none; transition:opacity .15s ease; }
-  #camFlash.on{ opacity:.7; transition:none; }
+  #camShutter:active{ transform:scale(.9); }
+  #camShootBar{ display:flex; }
+  #camReviewBar{ display:none; }
+  #camOverlay.review #camShootBar{ display:none; }
+  #camOverlay.review #camReviewBar{ display:flex; }
 </style>
 <div id="camOverlay">
-  <video id="camVideo" playsinline muted autoplay></video>
-  <div id="camFlash"></div>
-  <div id="camBar">
+  <div id="camStage">
+    <video id="camVideo" playsinline muted autoplay disablepictureinpicture></video>
+    <img id="camPreview" alt="">
+    <div id="camMode">FOTO</div>
+    <div id="camFlash"></div>
+  </div>
+  <div class="cam-bar" id="camShootBar">
     <button type="button" class="cam-side" id="camCancel">Annuleer</button>
     <button type="button" id="camShutter" aria-label="Foto nemen"></button>
-    <button type="button" class="cam-side" id="camLibrary">Album</button>
+    <button type="button" class="cam-side right" id="camLibrary">Album</button>
+  </div>
+  <div class="cam-bar" id="camReviewBar">
+    <button type="button" class="cam-side" id="camRetake">Opnieuw</button>
+    <button type="button" class="cam-side right cam-use" id="camUse">Gebruik foto</button>
   </div>
 </div>
 <script>
 (function(){
   const overlay = document.getElementById('camOverlay');
   const video = document.getElementById('camVideo');
+  const preview = document.getElementById('camPreview');
   const flash = document.getElementById('camFlash');
   const nativeClick = HTMLInputElement.prototype.click;
-  let stream = null, targetInput = null, busy = false;
+  let stream = null, targetInput = null, shotBlob = null, shotUrl = null;
+
+  video.muted = true;
+  video.defaultMuted = true;
+  video.controls = false;
+
+  // iOS 16.4+: audio van deze pagina mengt met andere apps i.p.v. ze te onderbreken
+  function setAmbient(){
+    try{ if(navigator.audioSession) navigator.audioSession.type = 'ambient'; }catch(e){}
+  }
+  setAmbient();
 
   const supported = !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia && window.DataTransfer);
 
+  function clearShot(){
+    if(shotUrl) URL.revokeObjectURL(shotUrl);
+    shotUrl = null; shotBlob = null;
+    preview.removeAttribute('src');
+    overlay.classList.remove('review');
+  }
   function stopStream(){
     if(stream){ stream.getTracks().forEach(t => t.stop()); stream = null; }
     video.srcObject = null;
   }
   function closeCam(){
     overlay.classList.remove('open');
+    clearShot();
     stopStream();
     targetInput = null;
   }
 
   async function openCam(input){
     targetInput = input;
+    clearShot();
     overlay.classList.add('open');
+    setAmbient();
     try{
       stream = await navigator.mediaDevices.getUserMedia({
-        audio: false, // geen microfoon → muziek blijft spelen
-        video: { facingMode: { ideal: 'environment' }, width: { ideal: 2560 }, height: { ideal: 1920 } }
+        audio: false, // nooit de microfoon → geen opname, muziek blijft spelen
+        video: { facingMode: { ideal: 'environment' }, width: { ideal: 1920 }, height: { ideal: 1440 } }
       });
+      stream.getAudioTracks().forEach(t => t.stop());
       video.srcObject = stream;
       await video.play().catch(()=>{});
     } catch(err){
-      console.warn('In-app camera niet beschikbaar, val terug op native camera', err);
+      console.warn('In-app camera niet beschikbaar', err);
       overlay.classList.remove('open');
       stopStream();
       targetInput = null;
-      nativeClick.call(input); // terugval (kan muziek wel pauzeren)
+      toast('Camera niet beschikbaar — kies een foto uit je album');
+      pickFromLibrary(input);
     }
+  }
+
+  function pickFromLibrary(input){
+    // zonder capture-attribuut → iOS opent de fotokeuze i.p.v. de camera-app
+    const cap = input.getAttribute('capture');
+    input.removeAttribute('capture');
+    nativeClick.call(input);
+    setTimeout(()=> { if(cap !== null) input.setAttribute('capture', cap); }, 1500);
   }
 
   function deliver(input, file){
@@ -1682,46 +1738,51 @@ subscribeRealtime();
     input.dispatchEvent(new Event('change', { bubbles: true }));
   }
 
+  // afdrukken → stilstaande foto tonen ter controle
   document.getElementById('camShutter').addEventListener('click', ()=>{
-    if(busy || !stream || !targetInput || !video.videoWidth) return;
-    busy = true;
+    if(!stream || !targetInput || !video.videoWidth || overlay.classList.contains('review')) return;
     flash.classList.add('on');
-    requestAnimationFrame(()=> requestAnimationFrame(()=> flash.classList.remove('on')));
+    setTimeout(()=> flash.classList.remove('on'), 60);
     const canvas = document.createElement('canvas');
     canvas.width = video.videoWidth;
     canvas.height = video.videoHeight;
     canvas.getContext('2d').drawImage(video, 0, 0);
-    const input = targetInput;
     canvas.toBlob(blob => {
-      busy = false;
-      closeCam();
       if(!blob) return;
-      deliver(input, new File([blob], `foto_${Date.now()}.jpg`, { type: 'image/jpeg' }));
+      shotBlob = blob;
+      shotUrl = URL.createObjectURL(blob);
+      preview.src = shotUrl;
+      overlay.classList.add('review');
     }, 'image/jpeg', 0.92);
+  });
+
+  document.getElementById('camRetake').addEventListener('click', clearShot);
+
+  document.getElementById('camUse').addEventListener('click', ()=>{
+    if(!shotBlob || !targetInput) return;
+    const input = targetInput, blob = shotBlob;
+    closeCam();
+    deliver(input, new File([blob], `foto_${Date.now()}.jpg`, { type: 'image/jpeg' }));
   });
 
   document.getElementById('camCancel').addEventListener('click', closeCam);
 
-  // foto kiezen uit album: tijdelijk zonder capture-attribuut openen
   document.getElementById('camLibrary').addEventListener('click', ()=>{
     const input = targetInput;
     closeCam();
-    if(!input) return;
-    const cap = input.getAttribute('capture');
-    input.removeAttribute('capture');
-    nativeClick.call(input);
-    setTimeout(()=> { if(cap !== null) input.setAttribute('capture', cap); }, 1000);
+    if(input) pickFromLibrary(input);
   });
 
-  // alle camera-inputs (capture="environment") via de in-app camera laten lopen
+  // alle camera-inputs (capture="environment") via deze fotocamera laten lopen
   if(supported){
     HTMLInputElement.prototype.click = function(){
-      if(this.type === 'file' && this.hasAttribute('capture')){
-        openCam(this);
-      } else {
-        nativeClick.call(this);
-      }
+      if(this.type === 'file' && this.hasAttribute('capture')) openCam(this);
+      else nativeClick.call(this);
     };
+  } else {
+    // geen in-app camera mogelijk: nooit de camera-app openen (die stopt je muziek),
+    // maar altijd de fotokeuze
+    document.querySelectorAll('input[type=file][capture]').forEach(i => i.removeAttribute('capture'));
   }
 })();
 </script>
